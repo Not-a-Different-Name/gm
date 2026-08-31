@@ -266,8 +266,42 @@ const selection = new THREE.LineSegments(
 );
 selection.visible = false;
 scene.add(selection);
+
+// 破坏进度反馈：随长按逐渐升温发亮的半透明覆盖盒。
+const breakOverlay = new THREE.Mesh(
+  new THREE.BoxGeometry(1.03, 1.03, 1.03),
+  new THREE.MeshBasicMaterial({
+    color: 0xffb347,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false
+  })
+);
+breakOverlay.visible = false;
+scene.add(breakOverlay);
+
 const raycaster = new THREE.Raycaster();
 const screenCenter = new THREE.Vector2();
+
+// 所有方块统一的较短破坏耗时（秒）：长按此时长后方块被破坏。
+const BREAK_TIME = 0.45;
+
+interface BreakProgress {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  elapsed: number;
+  chipTimer: number;
+}
+
+let breakingHeld = false;
+let breakProgress: BreakProgress | undefined;
+
+function resetBreaking(): void {
+  breakProgress = undefined;
+  breakOverlay.visible = false;
+  breakOverlay.material.opacity = 0;
+}
 
 interface TargetBlock {
   readonly position: THREE.Vector3;
@@ -300,6 +334,58 @@ function updateSelection(): void {
   const position = toBlockPosition(target, -1);
   selection.position.copy(position).addScalar(0.5);
   selection.visible = true;
+}
+
+// 长按破坏：每帧对准心方块累计耗时，达到 BREAK_TIME 时破坏。
+// 中途松开或改瞄别的方块会重置进度。
+function updateBreaking(deltaSeconds: number): void {
+  if (!breakingHeld) {
+    return;
+  }
+  const target = getTargetBlock();
+  if (target === undefined) {
+    resetBreaking();
+    return;
+  }
+  const position = toBlockPosition(target, -1);
+  const block = world.getBlock(position.x, position.y, position.z);
+  if (block === BlockId.Air) {
+    resetBreaking();
+    return;
+  }
+
+  // 换目标则重新计时。
+  if (
+    breakProgress === undefined ||
+    breakProgress.x !== position.x ||
+    breakProgress.y !== position.y ||
+    breakProgress.z !== position.z
+  ) {
+    breakProgress = { x: position.x, y: position.y, z: position.z, elapsed: 0, chipTimer: 0 };
+  }
+
+  breakProgress.elapsed += deltaSeconds;
+  const ratio = Math.min(breakProgress.elapsed / BREAK_TIME, 1);
+
+  // 覆盖盒随进度升温发亮。
+  breakOverlay.position.copy(position).addScalar(0.5);
+  breakOverlay.visible = true;
+  breakOverlay.material.opacity = 0.15 + ratio * 0.45;
+
+  // 破坏过程中持续迸出少量碎屑。
+  breakProgress.chipTimer -= deltaSeconds;
+  if (breakProgress.chipTimer <= 0) {
+    breakProgress.chipTimer = 0.08;
+    particles.spawn(position.clone().addScalar(0.5), BLOCK_DEFINITIONS[block].color, 2);
+  }
+
+  if (ratio >= 1) {
+    if (world.setBlock(position.x, position.y, position.z, BlockId.Air)) {
+      particles.spawn(position.clone().addScalar(0.5), BLOCK_DEFINITIONS[block].color);
+      scheduleSave();
+    }
+    resetBreaking();
+  }
 }
 
 function isMenuTarget(target: EventTarget | null): boolean {
@@ -345,25 +431,27 @@ canvas.addEventListener('mousedown', (event) => {
   if (document.pointerLockElement !== canvas) {
     return;
   }
-  const target = getTargetBlock();
-  if (target === undefined) {
+  // 左键：进入长按破坏状态，真正的破坏在渲染循环中按耗时推进。
+  if (event.button === 0) {
+    breakingHeld = true;
     return;
   }
-  const blockPosition = toBlockPosition(target, event.button === 0 ? -1 : 1);
-  if (event.button === 0) {
-    const destroyedBlock = world.getBlock(blockPosition.x, blockPosition.y, blockPosition.z);
-    if (
-      destroyedBlock !== BlockId.Air &&
-      world.setBlock(blockPosition.x, blockPosition.y, blockPosition.z, BlockId.Air)
-    ) {
-      particles.spawn(blockPosition.addScalar(0.5), BLOCK_DEFINITIONS[destroyedBlock].color);
-      scheduleSave();
-    }
-  }
+  // 右键：即时放置。
   if (event.button === 2) {
+    const target = getTargetBlock();
+    if (target === undefined) {
+      return;
+    }
+    const blockPosition = toBlockPosition(target, 1);
     if (world.setBlock(blockPosition.x, blockPosition.y, blockPosition.z, selectedBlock)) {
       scheduleSave();
     }
+  }
+});
+canvas.addEventListener('mouseup', (event) => {
+  if (event.button === 0) {
+    breakingHeld = false;
+    resetBreaking();
   }
 });
 
@@ -393,6 +481,7 @@ function render(): void {
     world.update(player.position.x, player.position.z);
     particles.update(deltaSeconds);
     updateSelection();
+    updateBreaking(deltaSeconds);
   }
   // 天空持续推进（即使暂停也缓慢流动），并让雾与清屏色跟随地平线，使远景与天空融合。
   sky.update(paused ? deltaSeconds * 0.15 : deltaSeconds, camera.position);

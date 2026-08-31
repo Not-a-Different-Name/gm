@@ -12,8 +12,8 @@ export class BlockParticles {
   public readonly object3d = new THREE.Group();
   private readonly particles: Particle[] = [];
 
-  public spawn(position: THREE.Vector3, color: number): void {
-    for (let index = 0; index < 14; index += 1) {
+  public spawn(position: THREE.Vector3, color: number, count = 14): void {
+    for (let index = 0; index < count; index += 1) {
       const mesh = new THREE.Mesh(particleGeometry, new THREE.MeshBasicMaterial({ color }));
       mesh.position
         .copy(position)
