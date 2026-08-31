@@ -81,3 +81,7 @@ export const BLOCK_DEFINITIONS: Readonly<Record<BlockId, BlockDefinition>> = {
 export function isOpaqueBlock(blockId: BlockId): boolean {
   return !BLOCK_DEFINITIONS[blockId].transparent;
 }
+
+export function isSolidBlock(blockId: BlockId): boolean {
+  return BLOCK_DEFINITIONS[blockId].solid;
+}

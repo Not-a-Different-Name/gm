@@ -1,5 +1,5 @@
 import { FixedWorldBoundary, createWorldMetadata } from '@gm/core';
-import { VoxelWorldView } from '@gm/renderer';
+import { PlayerController, VoxelWorldView } from '@gm/renderer';
 import * as THREE from 'three';
 
 import './style.css';
@@ -21,6 +21,8 @@ app.innerHTML = `
     <h1>可扩展的方块世界</h1>
     <p>种子：<strong>${metadata.seed}</strong></p>
     <p>区块：<strong>3 × 3</strong> · ${fixedWorld ? '固定地图' : '无限地图预览'} · 海平面水体已启用</p>
+    <p>视角：<strong id="camera-mode">第一人称</strong> · 飞行：<strong id="flight-state">关闭</strong></p>
+    <p class="hint">点击画面锁定鼠标 · WASD 移动 · 空格跳跃 · F 飞行 · V 切换视角</p>
   </aside>
 `;
 
@@ -50,8 +52,24 @@ const world = new VoxelWorldView({
 scene.add(world.object3d);
 
 const camera = new THREE.PerspectiveCamera(64, 1, 0.1, 500);
-camera.position.set(42, world.getSpawnHeight() + 35, 42);
-camera.lookAt(0, world.getSpawnHeight() - 12, 0);
+const cameraMode = document.querySelector<HTMLElement>('#camera-mode');
+const flightState = document.querySelector<HTMLElement>('#flight-state');
+if (cameraMode === null || flightState === null) {
+  throw new Error('找不到游戏状态栏');
+}
+
+const player = new PlayerController({
+  camera,
+  canvas,
+  world,
+  spawnPosition: new THREE.Vector3(0.5, world.getSpawnHeight(), 0.5),
+  onCameraModeChange: (mode) => {
+    cameraMode.textContent = mode === 'first-person' ? '第一人称' : '第三人称';
+  },
+  onFlightChange: (enabled) => {
+    flightState.textContent = enabled ? '开启' : '关闭';
+  }
+});
 
 function resize(): void {
   const width = window.innerWidth;
@@ -61,14 +79,18 @@ function resize(): void {
   camera.updateProjectionMatrix();
 }
 
+const clock = new THREE.Clock();
+
 function render(): void {
-  world.update(camera.position.x, camera.position.z);
+  const deltaSeconds = clock.getDelta();
+  player.update(deltaSeconds);
+  world.update(player.position.x, player.position.z);
   renderer.render(scene, camera);
+  window.requestAnimationFrame(render);
 }
 
 window.addEventListener('resize', () => {
   resize();
-  render();
 });
 
 resize();

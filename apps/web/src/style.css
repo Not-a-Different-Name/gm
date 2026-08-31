@@ -44,3 +44,9 @@ h1 {
 .hud p {
   margin: 0.35rem 0;
 }
+
+.hint {
+  margin-top: 0.8rem !important;
+  color: #d4e7bb;
+  font-size: 0.86rem;
+}
