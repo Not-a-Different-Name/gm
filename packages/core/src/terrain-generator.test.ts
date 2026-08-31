@@ -31,5 +31,6 @@ describe('TerrainGenerator', () => {
     expect(first.countBlocks(BlockId.Leaves)).toBeGreaterThan(0);
     expect(first.countBlocks(BlockId.Wood)).toBe(second.countBlocks(BlockId.Wood));
     expect(first.countBlocks(BlockId.Leaves)).toBe(second.countBlocks(BlockId.Leaves));
+    expect(first.getChanges()).toHaveLength(0);
   });
 });

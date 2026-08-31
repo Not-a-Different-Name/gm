@@ -12,6 +12,7 @@
   "dependencies": {
     "@gm/core": "workspace:*",
     "@gm/renderer": "workspace:*",
+    "@gm/storage": "workspace:*",
     "three": "^0.180.0"
   },
   "devDependencies": {

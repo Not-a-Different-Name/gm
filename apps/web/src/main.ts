@@ -1,5 +1,6 @@
 import { BLOCK_DEFINITIONS, BlockId, FixedWorldBoundary, createWorldMetadata } from '@gm/core';
 import { BlockParticles, PlayerController, VoxelWorldView } from '@gm/renderer';
+import { WorldStorage, createStoredWorld } from '@gm/storage';
 import * as THREE from 'three';
 
 import './style.css';
@@ -148,6 +149,34 @@ const player = new PlayerController({
   }
 });
 
+const storage = new WorldStorage();
+let saveTimer: number | undefined;
+
+async function restoreWorld(): Promise<void> {
+  const savedWorld = await storage.loadWorld(defaultSeed);
+  if (savedWorld === undefined) {
+    return;
+  }
+  world.applyChunkDeltas(savedWorld.chunks);
+  player.setPosition(
+    new THREE.Vector3(savedWorld.player.x, savedWorld.player.y, savedWorld.player.z)
+  );
+}
+
+function scheduleSave(): void {
+  if (saveTimer !== undefined) {
+    window.clearTimeout(saveTimer);
+  }
+  saveTimer = window.setTimeout(() => {
+    saveTimer = undefined;
+    void storage.saveWorld(
+      createStoredWorld(defaultSeed, metadata, player.position, world.getModifiedChunks())
+    );
+  }, 600);
+}
+
+void restoreWorld();
+
 const selectedBlockLabel = document.querySelector<HTMLElement>('#selected-block');
 if (selectedBlockLabel === null) {
   throw new Error('找不到方块选择状态栏');
@@ -226,10 +255,13 @@ canvas.addEventListener('mousedown', (event) => {
       world.setBlock(blockPosition.x, blockPosition.y, blockPosition.z, BlockId.Air)
     ) {
       particles.spawn(blockPosition.addScalar(0.5), BLOCK_DEFINITIONS[destroyedBlock].color);
+      scheduleSave();
     }
   }
   if (event.button === 2) {
-    world.setBlock(blockPosition.x, blockPosition.y, blockPosition.z, selectedBlock);
+    if (world.setBlock(blockPosition.x, blockPosition.y, blockPosition.z, selectedBlock)) {
+      scheduleSave();
+    }
   }
 });
 

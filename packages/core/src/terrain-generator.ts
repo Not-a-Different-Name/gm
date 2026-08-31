@@ -84,6 +84,7 @@ export class TerrainGenerator {
     }
 
     this.generateTrees(chunk);
+    chunk.clearChanges();
 
     return chunk;
   }

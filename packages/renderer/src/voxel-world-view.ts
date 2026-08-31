@@ -17,6 +17,12 @@ export interface VoxelWorldViewOptions {
   readonly boundary?: WorldBoundary;
 }
 
+export interface ChunkDelta {
+  readonly x: number;
+  readonly z: number;
+  readonly changes: ReturnType<Chunk['getChanges']>;
+}
+
 export class VoxelWorldView implements BlockLookup {
   private readonly generator: TerrainGenerator;
   private readonly boundary: WorldBoundary;
@@ -79,6 +85,27 @@ export class VoxelWorldView implements BlockLookup {
     if (localPosition.z === 0) this.refreshRenderedChunk(chunkPosition.x, chunkPosition.z - 1);
     if (localPosition.z === 15) this.refreshRenderedChunk(chunkPosition.x, chunkPosition.z + 1);
     return true;
+  }
+
+  public getModifiedChunks(): readonly ChunkDelta[] {
+    const deltas: ChunkDelta[] = [];
+    for (const chunk of this.chunks.values()) {
+      const changes = chunk.getChanges();
+      if (changes.length > 0) {
+        deltas.push({ x: chunk.x, z: chunk.z, changes });
+      }
+    }
+    return deltas;
+  }
+
+  public applyChunkDeltas(deltas: readonly ChunkDelta[]): void {
+    for (const delta of deltas) {
+      if (!this.boundary.containsChunk({ x: delta.x, z: delta.z })) {
+        continue;
+      }
+      this.getChunk(delta.x, delta.z).applyChanges(delta.changes);
+      this.refreshRenderedChunk(delta.x, delta.z);
+    }
   }
 
   public update(worldX: number, worldZ: number): void {

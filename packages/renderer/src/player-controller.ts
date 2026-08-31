@@ -85,6 +85,12 @@ export class PlayerController {
     return this.flightEnabled;
   }
 
+  public setPosition(position: THREE.Vector3): void {
+    this.position.copy(position);
+    this.velocity.set(0, 0, 0);
+    this.updateCamera();
+  }
+
   private readonly handleMouseMove = (event: MouseEvent): void => {
     if (document.pointerLockElement !== this.canvas) {
       return;

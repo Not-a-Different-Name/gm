@@ -3,8 +3,14 @@ import { BlockId } from './block.js';
 
 const CHUNK_VOLUME = CHUNK_SIZE * WORLD_HEIGHT * CHUNK_SIZE;
 
+export interface ChunkBlockChange {
+  readonly index: number;
+  readonly blockId: BlockId;
+}
+
 export class Chunk {
   private readonly blocks = new Uint8Array(CHUNK_VOLUME);
+  private readonly changes = new Map<number, BlockId>();
 
   public constructor(
     public readonly x: number,
@@ -19,12 +25,22 @@ export class Chunk {
     return this.blocks[this.getIndex(localX, y, localZ)] as BlockId;
   }
 
-  public setBlock(localX: number, y: number, localZ: number, blockId: BlockId): void {
+  public setBlock(
+    localX: number,
+    y: number,
+    localZ: number,
+    blockId: BlockId,
+    trackChange = true
+  ): void {
     if (!this.isInside(localX, y, localZ)) {
       throw new RangeError(`区块内坐标无效：${localX}, ${y}, ${localZ}`);
     }
 
-    this.blocks[this.getIndex(localX, y, localZ)] = blockId;
+    const index = this.getIndex(localX, y, localZ);
+    this.blocks[index] = blockId;
+    if (trackChange) {
+      this.changes.set(index, blockId);
+    }
   }
 
   public countBlocks(blockId: BlockId): number {
@@ -35,6 +51,24 @@ export class Chunk {
       }
     }
     return count;
+  }
+
+  public getChanges(): readonly ChunkBlockChange[] {
+    return [...this.changes].map(([index, blockId]) => ({ index, blockId }));
+  }
+
+  public applyChanges(changes: readonly ChunkBlockChange[]): void {
+    for (const change of changes) {
+      if (!Number.isInteger(change.index) || change.index < 0 || change.index >= CHUNK_VOLUME) {
+        throw new RangeError(`区块方块索引无效：${change.index}`);
+      }
+      this.blocks[change.index] = change.blockId;
+      this.changes.set(change.index, change.blockId);
+    }
+  }
+
+  public clearChanges(): void {
+    this.changes.clear();
   }
 
   private getIndex(localX: number, y: number, localZ: number): number {
