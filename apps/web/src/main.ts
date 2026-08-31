@@ -1,5 +1,5 @@
 import { BLOCK_DEFINITIONS, BlockId, FixedWorldBoundary, createWorldMetadata } from '@gm/core';
-import { BlockParticles, PlayerController, VoxelWorldView } from '@gm/renderer';
+import { BlockParticles, PlayerController, Sky, VoxelWorldView } from '@gm/renderer';
 import { WorldStorage, createStoredWorld } from '@gm/storage';
 import * as THREE from 'three';
 
@@ -24,7 +24,7 @@ app.innerHTML = `
     <h1>可扩展的方块世界</h1>
     <p>种子：<strong>${metadata.seed}</strong></p>
     <p>存档：<strong>${activeSaveName}</strong></p>
-    <p>区块：<strong>3 × 3</strong> · ${fixedWorld ? '固定地图' : '无限地图预览'} · 海平面水体已启用</p>
+    <p>区块：<strong>3 × 3</strong> · ${fixedWorld ? '固定地图' : '无限地图预览'} · 昼夜天空已启用</p>
     <p>视角：<strong id="camera-mode">第一人称</strong> · 飞行：<strong id="flight-state">关闭</strong></p>
     <p>当前方块：<strong id="selected-block">草方块</strong></p>
     <p class="hint">点击画面锁定鼠标 · 左键破坏 · 右键放置 · 1-5 选方块 · WASD 移动 · 空格跳跃 · F 飞行 · V 切换视角</p>
@@ -130,16 +130,15 @@ document.addEventListener('pointerlockchange', () => {
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-renderer.setClearColor(0x9fd8f4);
 renderer.shadowMap.enabled = false;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x9fd8f4, 110, 260);
-scene.add(new THREE.HemisphereLight(0xccecff, 0x4b5a36, 2.2));
+scene.fog = new THREE.Fog(0x9fd8f4, 130, 300);
 
-const sun = new THREE.DirectionalLight(0xfff5d1, 2.5);
-sun.position.set(80, 150, 45);
-scene.add(sun);
+// 昼夜天空：渐变穹顶、方块日月、星点与随时间变化的光照。
+const sky = new Sky();
+scene.add(sky.object3d);
+const horizonColor = new THREE.Color();
 
 const world = new VoxelWorldView({
   seed: defaultSeed,
@@ -395,6 +394,11 @@ function render(): void {
     particles.update(deltaSeconds);
     updateSelection();
   }
+  // 天空持续推进（即使暂停也缓慢流动），并让雾与清屏色跟随地平线，使远景与天空融合。
+  sky.update(paused ? deltaSeconds * 0.15 : deltaSeconds, camera.position);
+  sky.getHorizonColor(horizonColor);
+  scene.fog?.color.copy(horizonColor);
+  renderer.setClearColor(horizonColor);
   renderer.render(scene, camera);
   window.requestAnimationFrame(render);
 }

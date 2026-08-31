@@ -1,0 +1,9 @@
+# 依赖与构建产物
+node_modules/
+dist/
+dist-types/
+coverage/
+pnpm-lock.yaml
+
+# 本地工具与编辑器配置，不纳入项目格式化
+.claude/
