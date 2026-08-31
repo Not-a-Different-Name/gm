@@ -1,0 +1,62 @@
+:root {
+  color: #f3f8e8;
+  background: #17271d;
+  font-family: Inter, system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+#app {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 2rem;
+}
+
+.welcome-panel {
+  width: min(38rem, 100%);
+  padding: 2rem;
+  border: 4px solid #57733e;
+  background: #263f2d;
+  box-shadow: 10px 10px 0 #0c140e;
+}
+
+.eyebrow {
+  margin: 0;
+  color: #b4d17d;
+  font-weight: 700;
+}
+
+h1 {
+  margin: 0.6rem 0;
+}
+
+dl {
+  display: grid;
+  gap: 0.65rem;
+  margin: 1.5rem 0 0;
+}
+
+dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid #57733e;
+}
+
+dt {
+  color: #b4d17d;
+}
+
+dd {
+  margin: 0;
+  font-family: ui-monospace, monospace;
+}

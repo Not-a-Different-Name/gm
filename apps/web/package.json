@@ -1,0 +1,19 @@
+{
+  "name": "@gm/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.build.json && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@gm/core": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^6.2.4",
+    "vitest": "^3.1.1"
+  }
+}
