@@ -35,3 +35,4 @@ corepack pnpm build
 - [地形与渲染](docs/terrain-and-rendering.md)
 - [本地存档](docs/local-saves.md)
 - [材质系统](docs/materials.md)
+- [项目交接与完整计划](docs/project-handoff.md)
