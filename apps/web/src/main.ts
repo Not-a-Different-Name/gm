@@ -25,12 +25,88 @@ app.innerHTML = `
     <p>当前方块：<strong id="selected-block">草方块</strong></p>
     <p class="hint">点击画面锁定鼠标 · 左键破坏 · 右键放置 · 1-5 选方块 · WASD 移动 · 空格跳跃 · F 飞行 · V 切换视角</p>
   </aside>
+  <section id="main-menu" class="menu-layer">
+    <div class="menu-panel">
+      <p class="eyebrow">GM · 单机世界</p>
+      <h1>可扩展的方块世界</h1>
+      <p>种子：${metadata.seed}</p>
+      <button id="start-game" type="button">进入世界</button>
+      <p class="menu-note">进入后点击画面锁定鼠标，按 Esc 暂停。</p>
+    </div>
+  </section>
+  <section id="pause-menu" class="menu-layer is-hidden" aria-hidden="true">
+    <div class="menu-panel">
+      <p class="eyebrow">游戏已暂停</p>
+      <h1>暂停菜单</h1>
+      <button id="resume-game" type="button">继续游戏</button>
+      <button id="return-main-menu" class="secondary-button" type="button">返回主界面</button>
+      <p class="menu-note">按 Esc 也可暂停；选择继续后点击画面恢复控制。</p>
+    </div>
+  </section>
 `;
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas');
 if (canvas === null) {
   throw new Error('找不到游戏画布');
 }
+
+const mainMenu = document.querySelector<HTMLElement>('#main-menu');
+const pauseMenu = document.querySelector<HTMLElement>('#pause-menu');
+const startGame = document.querySelector<HTMLButtonElement>('#start-game');
+const resumeGame = document.querySelector<HTMLButtonElement>('#resume-game');
+const returnMainMenu = document.querySelector<HTMLButtonElement>('#return-main-menu');
+if (
+  mainMenu === null ||
+  pauseMenu === null ||
+  startGame === null ||
+  resumeGame === null ||
+  returnMainMenu === null
+) {
+  throw new Error('找不到游戏菜单');
+}
+const gameCanvas = canvas;
+const gameMainMenu = mainMenu;
+const gamePauseMenu = pauseMenu;
+
+let gameStarted = false;
+let paused = true;
+
+function setMenuVisibility(menu: HTMLElement, visible: boolean): void {
+  menu.classList.toggle('is-hidden', !visible);
+  menu.setAttribute('aria-hidden', String(!visible));
+}
+
+function startOrResumeGame(): void {
+  gameStarted = true;
+  paused = false;
+  setMenuVisibility(gameMainMenu, false);
+  setMenuVisibility(gamePauseMenu, false);
+  clock.getDelta();
+  void gameCanvas.requestPointerLock();
+}
+
+function pauseGame(): void {
+  if (!gameStarted) {
+    return;
+  }
+  paused = true;
+  selection.visible = false;
+  setMenuVisibility(gamePauseMenu, true);
+}
+
+startGame.addEventListener('click', startOrResumeGame);
+resumeGame.addEventListener('click', startOrResumeGame);
+returnMainMenu.addEventListener('click', () => {
+  gameStarted = false;
+  paused = true;
+  setMenuVisibility(gamePauseMenu, false);
+  setMenuVisibility(gameMainMenu, true);
+});
+document.addEventListener('pointerlockchange', () => {
+  if (gameStarted && document.pointerLockElement !== gameCanvas) {
+    pauseGame();
+  }
+});
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -131,6 +207,9 @@ function updateSelection(): void {
 }
 
 canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+canvas.addEventListener('auxclick', (event) => event.preventDefault());
+canvas.addEventListener('dragstart', (event) => event.preventDefault());
+canvas.addEventListener('mousedown', (event) => event.preventDefault());
 canvas.addEventListener('mousedown', (event) => {
   if (document.pointerLockElement !== canvas) {
     return;
@@ -175,10 +254,12 @@ const clock = new THREE.Clock();
 
 function render(): void {
   const deltaSeconds = clock.getDelta();
-  player.update(deltaSeconds);
-  world.update(player.position.x, player.position.z);
-  particles.update(deltaSeconds);
-  updateSelection();
+  if (!paused) {
+    player.update(deltaSeconds);
+    world.update(player.position.x, player.position.z);
+    particles.update(deltaSeconds);
+    updateSelection();
+  }
   renderer.render(scene, camera);
   window.requestAnimationFrame(render);
 }

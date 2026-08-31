@@ -11,12 +11,15 @@
 body {
   margin: 0;
   min-width: 320px;
+  overflow: hidden;
+  user-select: none;
 }
 
 #game-canvas {
   display: block;
   width: 100vw;
   height: 100vh;
+  touch-action: none;
 }
 
 .hud {
@@ -47,6 +50,57 @@ h1 {
 
 .hint {
   margin-top: 0.8rem !important;
+  color: #d4e7bb;
+  font-size: 0.86rem;
+}
+
+.menu-layer {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgb(6 16 10 / 54%);
+}
+
+.menu-layer.is-hidden {
+  display: none;
+}
+
+.menu-panel {
+  width: min(26rem, 100%);
+  padding: 2rem;
+  border: 4px solid #57733e;
+  background: #263f2d;
+  box-shadow: 10px 10px 0 #0c140e;
+  text-align: center;
+}
+
+.menu-panel button {
+  display: block;
+  width: 100%;
+  margin-top: 1rem;
+  padding: 0.8rem 1rem;
+  border: 2px solid #b4d17d;
+  background: #5d873f;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.menu-panel button:hover,
+.menu-panel button:focus-visible {
+  background: #75a94d;
+}
+
+.menu-panel .secondary-button {
+  border-color: #809a72;
+  background: #3e5846;
+}
+
+.menu-note {
+  margin: 1.4rem 0 0;
   color: #d4e7bb;
   font-size: 0.86rem;
 }
