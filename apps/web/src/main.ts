@@ -1,5 +1,5 @@
-import { FixedWorldBoundary, createWorldMetadata } from '@gm/core';
-import { PlayerController, VoxelWorldView } from '@gm/renderer';
+import { BLOCK_DEFINITIONS, BlockId, FixedWorldBoundary, createWorldMetadata } from '@gm/core';
+import { BlockParticles, PlayerController, VoxelWorldView } from '@gm/renderer';
 import * as THREE from 'three';
 
 import './style.css';
@@ -22,7 +22,8 @@ app.innerHTML = `
     <p>种子：<strong>${metadata.seed}</strong></p>
     <p>区块：<strong>3 × 3</strong> · ${fixedWorld ? '固定地图' : '无限地图预览'} · 海平面水体已启用</p>
     <p>视角：<strong id="camera-mode">第一人称</strong> · 飞行：<strong id="flight-state">关闭</strong></p>
-    <p class="hint">点击画面锁定鼠标 · WASD 移动 · 空格跳跃 · F 飞行 · V 切换视角</p>
+    <p>当前方块：<strong id="selected-block">草方块</strong></p>
+    <p class="hint">点击画面锁定鼠标 · 左键破坏 · 右键放置 · 1-5 选方块 · WASD 移动 · 空格跳跃 · F 飞行 · V 切换视角</p>
   </aside>
 `;
 
@@ -71,6 +72,97 @@ const player = new PlayerController({
   }
 });
 
+const selectedBlockLabel = document.querySelector<HTMLElement>('#selected-block');
+if (selectedBlockLabel === null) {
+  throw new Error('找不到方块选择状态栏');
+}
+
+const selectableBlocks = [
+  BlockId.Grass,
+  BlockId.Dirt,
+  BlockId.Stone,
+  BlockId.Sand,
+  BlockId.Wood
+] as const;
+let selectedBlock = BlockId.Grass;
+const particles = new BlockParticles();
+scene.add(particles.object3d);
+
+const selection = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(1.004, 1.004, 1.004)),
+  new THREE.LineBasicMaterial({ color: 0x171717 })
+);
+selection.visible = false;
+scene.add(selection);
+const raycaster = new THREE.Raycaster();
+const screenCenter = new THREE.Vector2();
+
+interface TargetBlock {
+  readonly position: THREE.Vector3;
+  readonly normal: THREE.Vector3;
+}
+
+function getTargetBlock(): TargetBlock | undefined {
+  raycaster.setFromCamera(screenCenter, camera);
+  const intersection = raycaster.intersectObject(world.object3d, true)[0];
+  const face = intersection?.face;
+  if (intersection === undefined || face === null || face === undefined) {
+    return undefined;
+  }
+  return { position: intersection.point, normal: face.normal.clone() };
+}
+
+function toBlockPosition(target: TargetBlock, direction: number): THREE.Vector3 {
+  return target.position
+    .clone()
+    .addScaledVector(target.normal, direction * 0.01)
+    .floor();
+}
+
+function updateSelection(): void {
+  const target = getTargetBlock();
+  if (target === undefined) {
+    selection.visible = false;
+    return;
+  }
+  const position = toBlockPosition(target, -1);
+  selection.position.copy(position).addScalar(0.5);
+  selection.visible = true;
+}
+
+canvas.addEventListener('contextmenu', (event) => event.preventDefault());
+canvas.addEventListener('mousedown', (event) => {
+  if (document.pointerLockElement !== canvas) {
+    return;
+  }
+  const target = getTargetBlock();
+  if (target === undefined) {
+    return;
+  }
+  const blockPosition = toBlockPosition(target, event.button === 0 ? -1 : 1);
+  if (event.button === 0) {
+    const destroyedBlock = world.getBlock(blockPosition.x, blockPosition.y, blockPosition.z);
+    if (
+      destroyedBlock !== BlockId.Air &&
+      world.setBlock(blockPosition.x, blockPosition.y, blockPosition.z, BlockId.Air)
+    ) {
+      particles.spawn(blockPosition.addScalar(0.5), BLOCK_DEFINITIONS[destroyedBlock].color);
+    }
+  }
+  if (event.button === 2) {
+    world.setBlock(blockPosition.x, blockPosition.y, blockPosition.z, selectedBlock);
+  }
+});
+
+document.addEventListener('keydown', (event) => {
+  const index = Number(event.key) - 1;
+  const nextBlock = selectableBlocks[index];
+  if (nextBlock !== undefined) {
+    selectedBlock = nextBlock;
+    selectedBlockLabel.textContent = BLOCK_DEFINITIONS[selectedBlock].name.replace('gm:', '');
+  }
+});
+
 function resize(): void {
   const width = window.innerWidth;
   const height = window.innerHeight;
@@ -85,6 +177,8 @@ function render(): void {
   const deltaSeconds = clock.getDelta();
   player.update(deltaSeconds);
   world.update(player.position.x, player.position.z);
+  particles.update(deltaSeconds);
+  updateSelection();
   renderer.render(scene, camera);
   window.requestAnimationFrame(render);
 }

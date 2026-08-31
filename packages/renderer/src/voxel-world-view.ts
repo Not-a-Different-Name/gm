@@ -58,6 +58,29 @@ export class VoxelWorldView implements BlockLookup {
     return this.generator.getSurfaceHeight(0, 0) + 18;
   }
 
+  public setBlock(x: number, y: number, z: number, blockId: BlockId): boolean {
+    if (y < 0 || y >= 256) {
+      return false;
+    }
+    const chunkPosition = getChunkPosition({ x, y, z });
+    if (!this.boundary.containsChunk(chunkPosition)) {
+      return false;
+    }
+    const localPosition = getLocalBlockPosition({ x, y, z });
+    this.getChunk(chunkPosition.x, chunkPosition.z).setBlock(
+      localPosition.x,
+      y,
+      localPosition.z,
+      blockId
+    );
+    this.refreshRenderedChunk(chunkPosition.x, chunkPosition.z);
+    if (localPosition.x === 0) this.refreshRenderedChunk(chunkPosition.x - 1, chunkPosition.z);
+    if (localPosition.x === 15) this.refreshRenderedChunk(chunkPosition.x + 1, chunkPosition.z);
+    if (localPosition.z === 0) this.refreshRenderedChunk(chunkPosition.x, chunkPosition.z - 1);
+    if (localPosition.z === 15) this.refreshRenderedChunk(chunkPosition.x, chunkPosition.z + 1);
+    return true;
+  }
+
   public update(worldX: number, worldZ: number): void {
     const center = getChunkPosition({ x: Math.floor(worldX), y: 0, z: Math.floor(worldZ) });
     const requiredChunks = new Set<string>();
@@ -113,5 +136,14 @@ export class VoxelWorldView implements BlockLookup {
       }
     }
     this.renderedChunks.delete(key);
+  }
+
+  private refreshRenderedChunk(x: number, z: number): void {
+    const key = getChunkKey({ x, z });
+    const objects = this.renderedChunks.get(key);
+    if (objects !== undefined) {
+      this.removeRenderedChunk(key, objects);
+      this.addRenderedChunk(x, z);
+    }
   }
 }
