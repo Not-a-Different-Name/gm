@@ -33,3 +33,4 @@ pnpm build
 - [模组设计](docs/modding.md)
 - [实施路线图](docs/roadmap.md)
 - [服务器与存档](docs/server-and-storage.md)
+- [地形与渲染](docs/terrain-and-rendering.md)

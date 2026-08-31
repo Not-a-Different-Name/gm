@@ -1,21 +1,21 @@
 {
-  "name": "@gm/web",
+  "name": "@gm/renderer",
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -p tsconfig.build.json && vite build",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@gm/core": "workspace:*",
-    "@gm/renderer": "workspace:*",
     "three": "^0.180.0"
   },
   "devDependencies": {
-    "vite": "^6.2.4",
     "vitest": "^3.1.1"
   }
 }
