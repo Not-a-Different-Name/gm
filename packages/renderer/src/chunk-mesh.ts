@@ -2,6 +2,8 @@ import { BLOCK_DEFINITIONS, BlockId, isOpaqueBlock } from '@gm/core';
 import type { Chunk } from '@gm/core';
 import * as THREE from 'three';
 
+import { getTextureAtlas, type TextureRegion } from './texture-atlas.js';
+
 interface Face {
   readonly normal: readonly [number, number, number];
   readonly vertices: readonly [
@@ -83,11 +85,13 @@ export interface BlockLookup {
 function addFace(
   positions: number[],
   colors: number[],
+  uvs: number[],
   blockX: number,
   blockY: number,
   blockZ: number,
   face: Face,
-  color: THREE.Color
+  color: THREE.Color,
+  region: TextureRegion
 ): void {
   const corners = [
     face.vertices[0],
@@ -99,9 +103,20 @@ function addFace(
   ];
   const shadedColor = color.clone().multiplyScalar(face.shade);
 
-  for (const corner of corners) {
+  const faceUvs = [
+    [region.u0, region.v0],
+    [region.u0, region.v1],
+    [region.u1, region.v1],
+    [region.u0, region.v0],
+    [region.u1, region.v1],
+    [region.u1, region.v0]
+  ];
+  for (let index = 0; index < corners.length; index += 1) {
+    const corner = corners[index]!;
+    const uv = faceUvs[index]!;
     positions.push(blockX + corner[0], blockY + corner[1], blockZ + corner[2]);
     colors.push(shadedColor.r, shadedColor.g, shadedColor.b);
+    uvs.push(uv[0]!, uv[1]!);
   }
 }
 
@@ -111,6 +126,8 @@ export function createChunkMesh(
 ): THREE.Mesh<THREE.BufferGeometry, THREE.MeshLambertMaterial> {
   const positions: number[] = [];
   const colors: number[] = [];
+  const uvs: number[] = [];
+  const atlas = getTextureAtlas();
   const chunkOriginX = chunk.x * 16;
   const chunkOriginZ = chunk.z * 16;
 
@@ -130,7 +147,24 @@ export function createChunkMesh(
             chunkOriginZ + z + face.normal[2]
           );
           if (!isOpaqueBlock(neighbor)) {
-            addFace(positions, colors, chunkOriginX + x, y, chunkOriginZ + z, face, color);
+            const textures = BLOCK_DEFINITIONS[blockId].textures;
+            const textureId =
+              face.normal[1] > 0
+                ? textures.top
+                : face.normal[1] < 0
+                  ? textures.bottom
+                  : textures.side;
+            addFace(
+              positions,
+              colors,
+              uvs,
+              chunkOriginX + x,
+              y,
+              chunkOriginZ + z,
+              face,
+              color,
+              atlas.getRegion(textureId)
+            );
           }
         }
       }
@@ -140,10 +174,11 @@ export function createChunkMesh(
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
 
-  const material = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const material = new THREE.MeshLambertMaterial({ vertexColors: true, map: atlas.texture });
   return new THREE.Mesh(geometry, material);
 }
 
@@ -153,6 +188,8 @@ export function createWaterMesh(
 ): THREE.Mesh<THREE.BufferGeometry, THREE.MeshLambertMaterial> {
   const positions: number[] = [];
   const colors: number[] = [];
+  const uvs: number[] = [];
+  const atlas = getTextureAtlas();
   const waterColor = new THREE.Color(BLOCK_DEFINITIONS[BlockId.Water].color);
   const chunkOriginX = chunk.x * 16;
   const chunkOriginZ = chunk.z * 16;
@@ -171,7 +208,17 @@ export function createWaterMesh(
             chunkOriginZ + z + face.normal[2]
           );
           if (neighbor === BlockId.Air || (neighbor !== BlockId.Water && isOpaqueBlock(neighbor))) {
-            addFace(positions, colors, chunkOriginX + x, y, chunkOriginZ + z, face, waterColor);
+            addFace(
+              positions,
+              colors,
+              uvs,
+              chunkOriginX + x,
+              y,
+              chunkOriginZ + z,
+              face,
+              waterColor,
+              atlas.getRegion('water')
+            );
           }
         }
       }
@@ -181,11 +228,13 @@ export function createWaterMesh(
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
 
   const material = new THREE.MeshLambertMaterial({
     vertexColors: true,
+    map: atlas.texture,
     transparent: true,
     opacity: 0.68,
     depthWrite: false
