@@ -62,6 +62,7 @@ function resize(): void {
 }
 
 function render(): void {
+  world.update(camera.position.x, camera.position.z);
   renderer.render(scene, camera);
 }
 
