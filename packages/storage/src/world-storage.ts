@@ -14,6 +14,7 @@ export interface StoredPlayerState {
 
 export interface StoredWorld {
   readonly id: string;
+  readonly name?: string;
   readonly metadata: WorldMetadata;
   readonly player: StoredPlayerState;
   readonly chunks: readonly StoredChunkDelta[];
@@ -41,6 +42,16 @@ export class WorldStorage {
     );
   }
 
+  public async listWorlds(seed: string): Promise<readonly StoredWorld[]> {
+    const database = await this.getDatabase();
+    const worlds = await this.runRequest<StoredWorld[]>(
+      database.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).getAll()
+    );
+    return worlds
+      .filter((world) => world.metadata.seed === seed)
+      .sort((left, right) => right.updatedAt - left.updatedAt);
+  }
+
   private getDatabase(): Promise<IDBDatabase> {
     this.databasePromise ??= new Promise((resolve, reject) => {
       const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
@@ -65,11 +76,12 @@ export class WorldStorage {
 
 export function createStoredWorld(
   id: string,
+  name: string,
   metadata: WorldMetadata,
   player: StoredPlayerState,
   chunks: readonly StoredChunkDelta[]
 ): StoredWorld {
-  return { id, metadata, player, chunks, updatedAt: Date.now() };
+  return { id, name, metadata, player, chunks, updatedAt: Date.now() };
 }
 
 export function hasMatchingMods(

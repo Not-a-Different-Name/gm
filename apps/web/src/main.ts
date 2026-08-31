@@ -7,6 +7,8 @@ import './style.css';
 
 const searchParameters = new URLSearchParams(window.location.search);
 const defaultSeed = searchParameters.get('seed')?.trim() || 'gm-0';
+const activeSaveId = searchParameters.get('save')?.trim() || defaultSeed;
+const activeSaveName = searchParameters.get('saveName')?.trim() || '默认存档';
 const fixedWorld = searchParameters.get('world') === 'fixed';
 const metadata = createWorldMetadata(defaultSeed, '0.1.0');
 const app = document.querySelector<HTMLElement>('#app');
@@ -21,6 +23,7 @@ app.innerHTML = `
     <p class="eyebrow">GM · 地形预览</p>
     <h1>可扩展的方块世界</h1>
     <p>种子：<strong>${metadata.seed}</strong></p>
+    <p>存档：<strong>${activeSaveName}</strong></p>
     <p>区块：<strong>3 × 3</strong> · ${fixedWorld ? '固定地图' : '无限地图预览'} · 海平面水体已启用</p>
     <p>视角：<strong id="camera-mode">第一人称</strong> · 飞行：<strong id="flight-state">关闭</strong></p>
     <p>当前方块：<strong id="selected-block">草方块</strong></p>
@@ -31,7 +34,12 @@ app.innerHTML = `
       <p class="eyebrow">GM · 单机世界</p>
       <h1>可扩展的方块世界</h1>
       <p>种子：${metadata.seed}</p>
+      <p>当前存档：${activeSaveName}</p>
       <button id="start-game" type="button">进入世界</button>
+      <label class="save-name-label" for="new-save-name">新存档名称</label>
+      <input id="new-save-name" maxlength="32" placeholder="例如：山地建造" />
+      <button id="create-save" class="secondary-button" type="button">创建新存档</button>
+      <div id="save-list" class="save-list" aria-label="当前种子的存档列表"></div>
       <p class="menu-note">进入后点击画面锁定鼠标，按 Esc 暂停。</p>
     </div>
   </section>
@@ -40,6 +48,7 @@ app.innerHTML = `
       <p class="eyebrow">游戏已暂停</p>
       <h1>暂停菜单</h1>
       <button id="resume-game" type="button">继续游戏</button>
+      <button id="save-world" class="secondary-button" type="button">保存当前地图</button>
       <button id="return-main-menu" class="secondary-button" type="button">返回主界面</button>
       <p class="menu-note">按 Esc 也可暂停；选择继续后点击画面恢复控制。</p>
     </div>
@@ -56,18 +65,27 @@ const pauseMenu = document.querySelector<HTMLElement>('#pause-menu');
 const startGame = document.querySelector<HTMLButtonElement>('#start-game');
 const resumeGame = document.querySelector<HTMLButtonElement>('#resume-game');
 const returnMainMenu = document.querySelector<HTMLButtonElement>('#return-main-menu');
+const saveWorld = document.querySelector<HTMLButtonElement>('#save-world');
+const createSave = document.querySelector<HTMLButtonElement>('#create-save');
+const newSaveName = document.querySelector<HTMLInputElement>('#new-save-name');
+const saveList = document.querySelector<HTMLElement>('#save-list');
 if (
   mainMenu === null ||
   pauseMenu === null ||
   startGame === null ||
   resumeGame === null ||
-  returnMainMenu === null
+  returnMainMenu === null ||
+  saveWorld === null ||
+  createSave === null ||
+  newSaveName === null ||
+  saveList === null
 ) {
   throw new Error('找不到游戏菜单');
 }
 const gameCanvas = canvas;
 const gameMainMenu = mainMenu;
 const gamePauseMenu = pauseMenu;
+const saveListElement = saveList;
 
 let gameStarted = false;
 let paused = true;
@@ -102,6 +120,7 @@ returnMainMenu.addEventListener('click', () => {
   paused = true;
   setMenuVisibility(gamePauseMenu, false);
   setMenuVisibility(gameMainMenu, true);
+  void populateSaveList();
 });
 document.addEventListener('pointerlockchange', () => {
   if (gameStarted && document.pointerLockElement !== gameCanvas) {
@@ -153,7 +172,7 @@ const storage = new WorldStorage();
 let saveTimer: number | undefined;
 
 async function restoreWorld(): Promise<void> {
-  const savedWorld = await storage.loadWorld(defaultSeed);
+  const savedWorld = await storage.loadWorld(activeSaveId);
   if (savedWorld === undefined) {
     return;
   }
@@ -163,19 +182,68 @@ async function restoreWorld(): Promise<void> {
   );
 }
 
+async function saveCurrentWorld(): Promise<void> {
+  await storage.saveWorld(
+    createStoredWorld(
+      activeSaveId,
+      activeSaveName,
+      metadata,
+      player.position,
+      world.getModifiedChunks()
+    )
+  );
+  await populateSaveList();
+}
+
 function scheduleSave(): void {
   if (saveTimer !== undefined) {
     window.clearTimeout(saveTimer);
   }
   saveTimer = window.setTimeout(() => {
     saveTimer = undefined;
-    void storage.saveWorld(
-      createStoredWorld(defaultSeed, metadata, player.position, world.getModifiedChunks())
-    );
+    void saveCurrentWorld();
   }, 600);
 }
 
 void restoreWorld();
+
+async function populateSaveList(): Promise<void> {
+  const saves = await storage.listWorlds(defaultSeed);
+  saveListElement.replaceChildren();
+  for (const save of saves) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'save-entry';
+    button.textContent = `${save.name ?? '旧存档'} · ${new Date(save.updatedAt).toLocaleString()}`;
+    button.addEventListener('click', () => {
+      const next = new URLSearchParams({
+        seed: defaultSeed,
+        save: save.id,
+        saveName: save.name ?? '旧存档'
+      });
+      window.location.search = next.toString();
+    });
+    saveListElement.append(button);
+  }
+}
+
+createSave.addEventListener('click', () => {
+  const name = newSaveName.value.trim();
+  if (name.length === 0) {
+    newSaveName.focus();
+    return;
+  }
+  const next = new URLSearchParams({
+    seed: defaultSeed,
+    save: crypto.randomUUID(),
+    saveName: name
+  });
+  window.location.search = next.toString();
+});
+saveWorld.addEventListener('click', () => {
+  void saveCurrentWorld();
+});
+void populateSaveList();
 
 const selectedBlockLabel = document.querySelector<HTMLElement>('#selected-block');
 if (selectedBlockLabel === null) {

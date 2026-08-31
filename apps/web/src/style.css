@@ -91,6 +91,39 @@ h1 {
   font-weight: 700;
 }
 
+.menu-panel input {
+  width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.65rem;
+  border: 2px solid #809a72;
+  background: #182c20;
+  color: #f3f8e8;
+  font: inherit;
+}
+
+.save-name-label {
+  display: block;
+  margin-top: 1.25rem;
+  color: #d4e7bb;
+  text-align: left;
+}
+
+.save-list {
+  display: grid;
+  max-height: 12rem;
+  gap: 0.45rem;
+  margin-top: 1rem;
+  overflow: auto;
+}
+
+.menu-panel .save-entry {
+  margin-top: 0;
+  border-color: #809a72;
+  background: #3e5846;
+  font-size: 0.82rem;
+  text-align: left;
+}
+
 .menu-panel button:hover,
 .menu-panel button:focus-visible {
   background: #75a94d;
