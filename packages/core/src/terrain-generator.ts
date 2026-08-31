@@ -83,6 +83,79 @@ export class TerrainGenerator {
       }
     }
 
+    this.generateTrees(chunk);
+
     return chunk;
+  }
+
+  private generateTrees(chunk: Chunk): void {
+    const worldStartX = chunk.x * CHUNK_SIZE;
+    const worldStartZ = chunk.z * CHUNK_SIZE;
+    const gridStartX = Math.floor(worldStartX / 5) - 1;
+    const gridStartZ = Math.floor(worldStartZ / 5) - 1;
+
+    for (let gridX = gridStartX; gridX <= gridStartX + 5; gridX += 1) {
+      for (let gridZ = gridStartZ; gridZ <= gridStartZ + 5; gridZ += 1) {
+        const chance = hash2(this.seed + 11, gridX, gridZ);
+        if (chance < 0.82) {
+          continue;
+        }
+
+        const treeX = gridX * 5 + Math.floor(hash2(this.seed + 12, gridX, gridZ) * 5);
+        const treeZ = gridZ * 5 + Math.floor(hash2(this.seed + 13, gridX, gridZ) * 5);
+        const groundY = this.getSurfaceHeight(treeX, treeZ);
+        if (groundY <= SEA_LEVEL + 1 || groundY >= 137) {
+          continue;
+        }
+
+        const trunkHeight = 4 + Math.floor(hash2(this.seed + 14, gridX, gridZ) * 3);
+        this.placeTreeInChunk(chunk, treeX, groundY + 1, treeZ, trunkHeight);
+      }
+    }
+  }
+
+  private placeTreeInChunk(
+    chunk: Chunk,
+    treeX: number,
+    trunkBaseY: number,
+    treeZ: number,
+    trunkHeight: number
+  ): void {
+    for (let y = 0; y < trunkHeight; y += 1) {
+      this.setBlockIfInside(chunk, treeX, trunkBaseY + y, treeZ, BlockId.Wood);
+    }
+
+    const canopyBaseY = trunkBaseY + trunkHeight - 2;
+    for (let relativeY = 0; relativeY <= 3; relativeY += 1) {
+      const radius = relativeY === 3 ? 1 : relativeY === 0 ? 1 : 2;
+      for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
+        for (let offsetZ = -radius; offsetZ <= radius; offsetZ += 1) {
+          if (Math.abs(offsetX) + Math.abs(offsetZ) > radius + 1) {
+            continue;
+          }
+          this.setBlockIfInside(
+            chunk,
+            treeX + offsetX,
+            canopyBaseY + relativeY,
+            treeZ + offsetZ,
+            BlockId.Leaves
+          );
+        }
+      }
+    }
+  }
+
+  private setBlockIfInside(
+    chunk: Chunk,
+    worldX: number,
+    y: number,
+    worldZ: number,
+    blockId: BlockId
+  ): void {
+    const localX = worldX - chunk.x * CHUNK_SIZE;
+    const localZ = worldZ - chunk.z * CHUNK_SIZE;
+    if (localX >= 0 && localX < CHUNK_SIZE && localZ >= 0 && localZ < CHUNK_SIZE) {
+      chunk.setBlock(localX, y, localZ, blockId);
+    }
   }
 }

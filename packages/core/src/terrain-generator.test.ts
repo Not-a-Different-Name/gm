@@ -21,4 +21,15 @@ describe('TerrainGenerator', () => {
       expect(chunk.getBlock(0, SEA_LEVEL, 0)).toBe(BlockId.Water);
     }
   });
+
+  it('生成稳定的树木方块', () => {
+    const generator = new TerrainGenerator('forest-42');
+    const first = generator.generateChunk(-1, 0);
+    const second = generator.generateChunk(-1, 0);
+
+    expect(first.countBlocks(BlockId.Wood)).toBeGreaterThan(0);
+    expect(first.countBlocks(BlockId.Leaves)).toBeGreaterThan(0);
+    expect(first.countBlocks(BlockId.Wood)).toBe(second.countBlocks(BlockId.Wood));
+    expect(first.countBlocks(BlockId.Leaves)).toBe(second.countBlocks(BlockId.Leaves));
+  });
 });

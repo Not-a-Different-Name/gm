@@ -11,19 +11,18 @@ GM 是一个面向桌面浏览器的可扩展体素沙盒游戏。第一阶段�
 需要 Node.js 22 LTS 和 pnpm 10：
 
 ```bash
-corepack enable
-pnpm install
-pnpm dev
+corepack pnpm install
+corepack pnpm dev
 ```
 
 常用检查：
 
 ```bash
-pnpm format:check
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
+corepack pnpm format:check
+corepack pnpm lint
+corepack pnpm typecheck
+corepack pnpm test
+corepack pnpm build
 ```
 
 ## 文档

@@ -1,10 +1,12 @@
-import { createWorldMetadata } from '@gm/core';
+import { FixedWorldBoundary, createWorldMetadata } from '@gm/core';
 import { VoxelWorldView } from '@gm/renderer';
 import * as THREE from 'three';
 
 import './style.css';
 
-const defaultSeed = 'gm-0';
+const searchParameters = new URLSearchParams(window.location.search);
+const defaultSeed = searchParameters.get('seed')?.trim() || 'gm-0';
+const fixedWorld = searchParameters.get('world') === 'fixed';
 const metadata = createWorldMetadata(defaultSeed, '0.1.0');
 const app = document.querySelector<HTMLElement>('#app');
 
@@ -18,7 +20,7 @@ app.innerHTML = `
     <p class="eyebrow">GM · 地形预览</p>
     <h1>可扩展的方块世界</h1>
     <p>种子：<strong>${metadata.seed}</strong></p>
-    <p>区块：<strong>3 × 3</strong> · 海平面水体已启用</p>
+    <p>区块：<strong>3 × 3</strong> · ${fixedWorld ? '固定地图' : '无限地图预览'} · 海平面水体已启用</p>
   </aside>
 `;
 
@@ -40,7 +42,11 @@ const sun = new THREE.DirectionalLight(0xfff5d1, 2.5);
 sun.position.set(80, 150, 45);
 scene.add(sun);
 
-const world = new VoxelWorldView({ seed: defaultSeed, radius: 1 });
+const world = new VoxelWorldView({
+  seed: defaultSeed,
+  radius: 1,
+  boundary: fixedWorld ? new FixedWorldBoundary({ x: -1, z: -1 }, { x: 1, z: 1 }) : undefined
+});
 scene.add(world.object3d);
 
 const camera = new THREE.PerspectiveCamera(64, 1, 0.1, 500);

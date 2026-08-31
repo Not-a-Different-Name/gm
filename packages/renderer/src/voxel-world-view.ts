@@ -1,11 +1,12 @@
 import {
   BlockId,
+  InfiniteWorldBoundary,
   TerrainGenerator,
   getChunkKey,
   getChunkPosition,
   getLocalBlockPosition
 } from '@gm/core';
-import type { Chunk } from '@gm/core';
+import type { Chunk, WorldBoundary } from '@gm/core';
 import * as THREE from 'three';
 
 import { type BlockLookup, createChunkMesh, createWaterMesh } from './chunk-mesh.js';
@@ -13,18 +14,24 @@ import { type BlockLookup, createChunkMesh, createWaterMesh } from './chunk-mesh
 export interface VoxelWorldViewOptions {
   readonly seed: string;
   readonly radius: number;
+  readonly boundary?: WorldBoundary;
 }
 
 export class VoxelWorldView implements BlockLookup {
   private readonly generator: TerrainGenerator;
+  private readonly boundary: WorldBoundary;
   private readonly chunks = new Map<string, Chunk>();
   private readonly group = new THREE.Group();
 
   public constructor(options: VoxelWorldViewOptions) {
     this.generator = new TerrainGenerator(options.seed);
+    this.boundary = options.boundary ?? new InfiniteWorldBoundary();
 
     for (let chunkX = -options.radius; chunkX <= options.radius; chunkX += 1) {
       for (let chunkZ = -options.radius; chunkZ <= options.radius; chunkZ += 1) {
+        if (!this.boundary.containsChunk({ x: chunkX, z: chunkZ })) {
+          continue;
+        }
         const chunk = this.getChunk(chunkX, chunkZ);
         this.group.add(createChunkMesh(chunk, this), createWaterMesh(chunk, this));
       }
@@ -41,6 +48,9 @@ export class VoxelWorldView implements BlockLookup {
     }
 
     const chunkPosition = getChunkPosition({ x, y, z });
+    if (!this.boundary.containsChunk(chunkPosition)) {
+      return BlockId.Air;
+    }
     const localPosition = getLocalBlockPosition({ x, y, z });
     return this.getChunk(chunkPosition.x, chunkPosition.z).getBlock(
       localPosition.x,

@@ -27,6 +27,16 @@ export class Chunk {
     this.blocks[this.getIndex(localX, y, localZ)] = blockId;
   }
 
+  public countBlocks(blockId: BlockId): number {
+    let count = 0;
+    for (const currentBlockId of this.blocks) {
+      if (currentBlockId === blockId) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
   private getIndex(localX: number, y: number, localZ: number): number {
     return (y * CHUNK_SIZE + localZ) * CHUNK_SIZE + localX;
   }

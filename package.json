@@ -5,13 +5,13 @@
   "description": "可扩展的网页体素沙盒游戏",
   "packageManager": "pnpm@10.6.3",
   "scripts": {
-    "dev": "pnpm --filter @gm/web dev",
-    "build": "pnpm --recursive run build",
-    "test": "pnpm --recursive run test",
+    "dev": "corepack pnpm --filter @gm/web dev",
+    "build": "corepack pnpm --recursive run build",
+    "test": "corepack pnpm --recursive run test",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "pnpm --recursive run typecheck"
+    "typecheck": "corepack pnpm --recursive run typecheck"
   },
   "devDependencies": {
     "@types/three": "^0.180.0",
