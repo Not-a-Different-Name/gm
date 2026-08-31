@@ -2,7 +2,7 @@ import { BLOCK_DEFINITIONS, BlockId, isOpaqueBlock } from '@gm/core';
 import type { Chunk } from '@gm/core';
 import * as THREE from 'three';
 
-import { getTextureAtlas, type TextureRegion } from './texture-atlas.js';
+import { getTextureAtlas, TEXTURE_VARIANT_COUNT, type TextureRegion } from './texture-atlas.js';
 
 interface Face {
   readonly normal: readonly [number, number, number];
@@ -82,6 +82,15 @@ export interface BlockLookup {
   getBlock(x: number, y: number, z: number): BlockId;
 }
 
+function getTextureVariant(x: number, y: number, z: number, faceIndex: number): number {
+  const hash =
+    Math.imul(x, 73_856_093) ^
+    Math.imul(y, 19_349_663) ^
+    Math.imul(z, 83_492_791) ^
+    Math.imul(faceIndex, 2_654_435_761);
+  return (hash >>> 0) % TEXTURE_VARIANT_COUNT;
+}
+
 function addFace(
   positions: number[],
   colors: number[],
@@ -139,8 +148,8 @@ export function createChunkMesh(
           continue;
         }
 
-        const color = new THREE.Color(BLOCK_DEFINITIONS[blockId].color);
-        for (const face of FACES) {
+        const color = new THREE.Color(0xffffff);
+        for (const [faceIndex, face] of FACES.entries()) {
           const neighbor = lookup.getBlock(
             chunkOriginX + x + face.normal[0],
             y + face.normal[1],
@@ -163,7 +172,10 @@ export function createChunkMesh(
               chunkOriginZ + z,
               face,
               color,
-              atlas.getRegion(textureId)
+              atlas.getRegion(
+                textureId,
+                getTextureVariant(chunkOriginX + x, y, chunkOriginZ + z, faceIndex)
+              )
             );
           }
         }
@@ -194,7 +206,7 @@ export function createWaterMesh(
   const colors: number[] = [];
   const uvs: number[] = [];
   const atlas = getTextureAtlas();
-  const waterColor = new THREE.Color(BLOCK_DEFINITIONS[BlockId.Water].color);
+  const waterColor = new THREE.Color(0xffffff);
   const chunkOriginX = chunk.x * 16;
   const chunkOriginZ = chunk.z * 16;
 
@@ -205,7 +217,7 @@ export function createWaterMesh(
           continue;
         }
 
-        for (const face of FACES) {
+        for (const [faceIndex, face] of FACES.entries()) {
           const neighbor = lookup.getBlock(
             chunkOriginX + x + face.normal[0],
             y + face.normal[1],
@@ -221,7 +233,10 @@ export function createWaterMesh(
               chunkOriginZ + z,
               face,
               waterColor,
-              atlas.getRegion('water')
+              atlas.getRegion(
+                'water',
+                getTextureVariant(chunkOriginX + x, y, chunkOriginZ + z, faceIndex)
+              )
             );
           }
         }
