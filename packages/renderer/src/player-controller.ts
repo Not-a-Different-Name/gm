@@ -90,8 +90,10 @@ export class PlayerController {
       return;
     }
 
-    this.yaw -= event.movementX * 0.0024;
-    this.pitch = THREE.MathUtils.clamp(this.pitch - event.movementY * 0.0024, -1.48, 1.48);
+    const movementX = THREE.MathUtils.clamp(event.movementX, -80, 80);
+    const movementY = THREE.MathUtils.clamp(event.movementY, -80, 80);
+    this.yaw -= movementX * 0.0024;
+    this.pitch = THREE.MathUtils.clamp(this.pitch - movementY * 0.0024, -1.48, 1.48);
   };
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
@@ -200,10 +202,30 @@ export class PlayerController {
       return;
     }
 
-    const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
-    const cameraOffset = forward.multiplyScalar(-5.5);
-    cameraOffset.y = 2.2;
-    this.camera.position.copy(eyePosition).add(cameraOffset);
+    const lookDirection = new THREE.Vector3(0, 0, -1).applyEuler(
+      new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ')
+    );
+    const cameraDistance = this.getThirdPersonCameraDistance(eyePosition, lookDirection);
+    this.camera.position.copy(eyePosition).addScaledVector(lookDirection, -cameraDistance);
     this.camera.lookAt(eyePosition);
+  }
+
+  private getThirdPersonCameraDistance(
+    eyePosition: THREE.Vector3,
+    lookDirection: THREE.Vector3
+  ): number {
+    const maximumDistance = 5.5;
+    for (let distance = 0.25; distance <= maximumDistance; distance += 0.25) {
+      const sample = eyePosition.clone().addScaledVector(lookDirection, -distance);
+      const blockId = this.world.getBlock(
+        Math.floor(sample.x),
+        Math.floor(sample.y),
+        Math.floor(sample.z)
+      );
+      if (blockId !== BlockId.Air && isSolidBlock(blockId)) {
+        return Math.max(0.35, distance - 0.25);
+      }
+    }
+    return maximumDistance;
   }
 }
