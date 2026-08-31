@@ -178,7 +178,11 @@ export function createChunkMesh(
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
 
-  const material = new THREE.MeshLambertMaterial({ vertexColors: true, map: atlas.texture });
+  const material = new THREE.MeshLambertMaterial({
+    vertexColors: true,
+    map: atlas.texture,
+    alphaTest: 0.5
+  });
   return new THREE.Mesh(geometry, material);
 }
 
