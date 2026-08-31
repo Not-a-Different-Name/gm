@@ -235,10 +235,45 @@ function updateSelection(): void {
   selection.visible = true;
 }
 
-canvas.addEventListener('contextmenu', (event) => event.preventDefault());
-canvas.addEventListener('auxclick', (event) => event.preventDefault());
+function isMenuTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('.menu-panel') !== null;
+}
+
+document.addEventListener(
+  'contextmenu',
+  (event) => {
+    if (!isMenuTarget(event.target)) {
+      event.preventDefault();
+    }
+  },
+  { capture: true }
+);
+document.addEventListener(
+  'auxclick',
+  (event) => {
+    if (!isMenuTarget(event.target)) {
+      event.preventDefault();
+    }
+  },
+  { capture: true }
+);
 canvas.addEventListener('dragstart', (event) => event.preventDefault());
-canvas.addEventListener('mousedown', (event) => event.preventDefault());
+canvas.addEventListener('pointerdown', (event) => {
+  canvas.setPointerCapture(event.pointerId);
+  if (event.button !== 0) {
+    event.preventDefault();
+  }
+});
+canvas.addEventListener('pointermove', (event) => {
+  if (event.buttons !== 0) {
+    event.preventDefault();
+  }
+});
+canvas.addEventListener('pointerup', (event) => {
+  if (canvas.hasPointerCapture(event.pointerId)) {
+    canvas.releasePointerCapture(event.pointerId);
+  }
+});
 canvas.addEventListener('mousedown', (event) => {
   if (document.pointerLockElement !== canvas) {
     return;
