@@ -14,7 +14,7 @@ export interface ChunkMeshGeometryData {
   readonly positions: number[];
   /** 顶点色：只含方向明暗（shade），图集纹理自带方块底色。 */
   readonly colors: number[];
-  /** 块内平铺坐标：矩形四角为 (0,0)/(0,h)/(w,h)/(w,0)，着色器取 fract 映射回图集。 */
+  /** 块内平铺坐标：四角取本方向角格表 0/1 乘宽高，着色器对 fract 小数逐块映射回图集。 */
   readonly uvs: number[];
   /** 每顶点的图集 region（u0, v0, Δu, Δv），供着色器把平铺坐标加回图集。 */
   readonly regions: number[];
@@ -149,10 +149,8 @@ const FACE_LAYOUTS: readonly FaceLayout[] = [
   }
 ];
 
-// 四角在两个三角形（0-1-2 / 0-2-3）中的顺序与平铺 uv 系数（0 或 w/h）。
+// 四角在两个三角形（0-1-2 / 0-2-3）中的顺序。
 const TRIANGLE_CORNERS = [0, 1, 2, 0, 2, 3] as const;
-const CORNER_UV_U = [0, 0, 1, 1] as const;
-const CORNER_UV_V = [0, 1, 1, 0] as const;
 
 // 把贪心矩形列表转成非索引网格属性数组：每矩形 6 顶点（两个三角形）。
 // 矩形之间绝不共享顶点——computeVertexNormals 按三角形给法线，垂直相交面的
@@ -192,7 +190,9 @@ export function buildChunkMeshGeometry(
         cells[layout.axes[2]] + corner[2]
       );
       colors.push(layout.shade, layout.shade, layout.shade);
-      uvs.push(CORNER_UV_U[cornerIndex]! * rect.width, CORNER_UV_V[cornerIndex]! * rect.height);
+      // 平铺 uv 与角格表同源：矩形四角落在哪个角格随方向而变（cellEnd），
+      // uv 系数必须跟随同一张表，否则合并矩形的 uv 轴会与面内轴错位、贴图按合并尺寸拉伸。
+      uvs.push(cellEnd[0] * rect.width, cellEnd[1] * rect.height);
       regions.push(region.u0, region.v0, regionWidth, regionHeight);
     }
   }

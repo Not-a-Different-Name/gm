@@ -108,10 +108,32 @@ describe('buildChunkMeshGeometry 顶点与朝向', () => {
 describe('buildChunkMeshGeometry 平铺 uv 与 region', () => {
   it('2×2 矩形的 uv 为块内坐标 (0..2)，region 为传入四值', () => {
     const data = buildChunkMeshGeometry([makeRect({ width: 2, height: 2 })], () => FIXED_REGION);
-    // 四角 (0,0)/(0,2)/(2,2)/(2,0)，两个三角形 0-1-2 / 0-2-3。
-    expect(data.uvs).toEqual([0, 0, 0, 2, 2, 2, 0, 0, 2, 2, 2, 0]);
+    // +Y 角格表 [0,1]/[1,1]/[1,0]/[0,0]：四角 uv (0,2)/(2,2)/(2,0)/(0,0)，
+    // 两个三角形 0-1-2 / 0-2-3。
+    expect(data.uvs).toEqual([0, 2, 2, 2, 2, 0, 0, 2, 2, 0, 0, 0]);
     for (let vertex = 0; vertex < 6; vertex += 1) {
       expect(data.regions.slice(vertex * 4, vertex * 4 + 4)).toEqual([0.25, 0.25, 0.25, 0.5]);
+    }
+  });
+
+  it('六个方向的平铺 uv 与角格表一致（u 随宽度、v 随高度，不随方向错位）', () => {
+    // 2×3 矩形四角的期望 uv = 角格表 (cellU×2, cellV×3)，按三角形顺序 0-1-2 / 0-2-3 展开。
+    // 此表防回归：uv 系数曾与角格表脱钩，导致部分方向的合并矩形 uv 轴与面内轴错位、
+    // 贴图按合并尺寸整面拉伸（单块 1×1 矩形恰好掩盖该缺陷）。
+    const EXPECTED_UVS: readonly (readonly number[])[] = [
+      [0, 0, 0, 3, 2, 3, 0, 0, 2, 3, 2, 0], // +X：角格 [0,0]/[0,1]/[1,1]/[1,0]
+      [2, 0, 2, 3, 0, 3, 2, 0, 0, 3, 0, 0], // -X：角格 [1,0]/[1,1]/[0,1]/[0,0]
+      [0, 3, 2, 3, 2, 0, 0, 3, 2, 0, 0, 0], // +Y：角格 [0,1]/[1,1]/[1,0]/[0,0]
+      [0, 0, 2, 0, 2, 3, 0, 0, 2, 3, 0, 3], // -Y：角格 [0,0]/[1,0]/[1,1]/[0,1]
+      [2, 0, 2, 3, 0, 3, 2, 0, 0, 3, 0, 0], // +Z：角格 [1,0]/[1,1]/[0,1]/[0,0]
+      [0, 0, 0, 3, 2, 3, 0, 0, 2, 3, 2, 0] // -Z：角格 [0,0]/[0,1]/[1,1]/[1,0]
+    ];
+    for (let directionIndex = 0; directionIndex < 6; directionIndex += 1) {
+      const data = buildChunkMeshGeometry(
+        [makeRect({ directionIndex, u0: 1, v0: 1, layer: 2, width: 2, height: 3 })],
+        () => FIXED_REGION
+      );
+      expect(data.uvs).toEqual(EXPECTED_UVS[directionIndex]);
     }
   });
 
