@@ -28,6 +28,10 @@ export interface WaterFlowWorld {
 // 每次流体模拟推进的间隔（秒）：让水肉眼可见地逐格向外爬 / 逐格退去。
 const STEP_INTERVAL = 0.2;
 
+// 两次水面重建的最小间隔（秒）：配合"每帧最多重建一个脏区块"，
+// 把重建开销摊到多帧，避免一个 tick 同步重建多个区块造成周期性卡顿。
+const REBUILD_INTERVAL = 0.05;
+
 // 单个 tick 最多评估的格子数（护栏）：极端情况下也不会卡死一帧。
 const MAX_CELLS_PER_TICK = 4096;
 
@@ -55,16 +59,17 @@ const HORIZONTAL: readonly (readonly [number, number])[] = [
  *   无供给或超过上限则干涸。撤源后失去供给的水被逐 tick 顶高直至干涸 → 边缘退水。
  *
  * 卡顿防治：只把受影响的格子标为活跃，写入用不触发重建的通道，
- * 每 tick 结束再按"脏区块"批量重建**水网格**（不碰实心地形网格）；
+ * 按"脏区块"跨 tick 累积、由 update 逐帧摊开重建**水网格**（不碰实心地形网格）；
  * 活跃集合为空时完全静默、零开销。
  */
 export class WaterFlowController {
   private readonly world: WaterFlowWorld;
   // 本轮待重新评估的格子集合（活跃前沿）。
   private active = new Set<string>();
-  // 本 tick 内因写入而需要刷新的区块键集合。
+  // 因写入而需要重建水网格的区块键集合：跨 tick 累积，由 update 逐帧摊开重建。
   private readonly dirtyChunks = new Set<string>();
   private timer = 0;
+  private rebuildTimer = 0;
 
   public constructor(world: WaterFlowWorld) {
     this.world = world;
@@ -86,17 +91,27 @@ export class WaterFlowController {
     this.markDirty(x, y, z);
   }
 
-  /** 每帧调用：按间隔推进水流模拟。 */
+  /** 每帧调用：按间隔推进水流模拟，并把水面网格重建摊到各帧。 */
   public update(deltaSeconds: number): void {
-    if (this.active.size === 0) {
-      return;
+    if (this.active.size > 0) {
+      this.timer += deltaSeconds;
+      if (this.timer >= STEP_INTERVAL) {
+        this.timer = 0;
+        this.step();
+      }
     }
-    this.timer += deltaSeconds;
-    if (this.timer < STEP_INTERVAL) {
-      return;
+    // 水面重建与模拟解耦：每帧至多重建一个脏区块且间隔不小于 REBUILD_INTERVAL，
+    // 避免一个 tick 同步重建多个区块造成周期性卡顿。
+    this.rebuildTimer += deltaSeconds;
+    if (this.rebuildTimer >= REBUILD_INTERVAL && this.dirtyChunks.size > 0) {
+      this.rebuildTimer = 0;
+      const key = this.dirtyChunks.values().next().value;
+      if (key !== undefined) {
+        this.dirtyChunks.delete(key);
+        const [chunkX, chunkZ] = key.split(',').map(Number) as [number, number];
+        this.world.refreshWater(chunkX, chunkZ);
+      }
     }
-    this.timer = 0;
-    this.step();
   }
 
   private activate(x: number, y: number, z: number): void {
@@ -143,12 +158,7 @@ export class WaterFlowController {
       processed += 1;
       this.evaluate(key);
     }
-
-    for (const chunkKey of this.dirtyChunks) {
-      const [chunkX, chunkZ] = chunkKey.split(',').map(Number) as [number, number];
-      this.world.refreshWater(chunkX, chunkZ);
-    }
-    this.dirtyChunks.clear();
+    // 注意：水网格重建不在此同步进行，脏区块由 update() 逐帧摊开重建。
   }
 
   private markChunkDirty(x: number, z: number): void {

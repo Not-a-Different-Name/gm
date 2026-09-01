@@ -295,8 +295,11 @@ const breakOverlay = new THREE.Mesh(
 breakOverlay.visible = false;
 scene.add(breakOverlay);
 
-const raycaster = new THREE.Raycaster();
-const screenCenter = new THREE.Vector2();
+// 准星射线最远遍历的格数：覆盖视距内的已渲染区块（半径 1 ≈ 最多约 48 格外）。
+const TARGET_REACH = 64;
+
+// 复用临时向量，避免每帧分配。
+const targetDirection = new THREE.Vector3();
 
 // 所有方块统一的较短破坏耗时（秒）：长按此时长后方块被破坏。
 const BREAK_TIME = 0.45;
@@ -321,22 +324,90 @@ function resetBreaking(): void {
 interface TargetBlock {
   readonly position: THREE.Vector3;
   readonly normal: THREE.Vector3;
+  readonly blockId: BlockId;
 }
 
+// 体素 DDA 遍历：沿相机视线逐格推进，返回第一个非空气方块所在格与命中面法线。
+// 替代每帧对全部区块网格做三角形射线检测（后者随网格复杂度持续消耗 CPU，是卡顿主因之一）。
+// 只访问已渲染区块，避免 getBlock 顺带生成未加载区块。
 function getTargetBlock(): TargetBlock | undefined {
-  raycaster.setFromCamera(screenCenter, camera);
-  const intersection = raycaster.intersectObject(world.object3d, true)[0];
-  const face = intersection?.face;
-  if (intersection === undefined || face === null || face === undefined) {
-    return undefined;
+  const direction = camera.getWorldDirection(targetDirection);
+  const origin = camera.position;
+
+  let x = Math.floor(origin.x);
+  let y = Math.floor(origin.y);
+  let z = Math.floor(origin.z);
+  const stepX = direction.x > 0 ? 1 : -1;
+  const stepY = direction.y > 0 ? 1 : -1;
+  const stepZ = direction.z > 0 ? 1 : -1;
+  const deltaX = direction.x === 0 ? Infinity : Math.abs(1 / direction.x);
+  const deltaY = direction.y === 0 ? Infinity : Math.abs(1 / direction.y);
+  const deltaZ = direction.z === 0 ? Infinity : Math.abs(1 / direction.z);
+  let maxX = direction.x === 0 ? Infinity : (stepX > 0 ? x + 1 - origin.x : origin.x - x) * deltaX;
+  let maxY = direction.y === 0 ? Infinity : (stepY > 0 ? y + 1 - origin.y : origin.y - y) * deltaY;
+  let maxZ = direction.z === 0 ? Infinity : (stepZ > 0 ? z + 1 - origin.z : origin.z - z) * deltaZ;
+
+  let chunkX = x >> 4;
+  let chunkZ = z >> 4;
+  let inLoadedArea = world.hasRenderedChunk(chunkX, chunkZ);
+
+  for (let index = 0; index < TARGET_REACH; index += 1) {
+    let normalX = 0;
+    let normalY = 0;
+    let normalZ = 0;
+    let t: number;
+    if (maxX <= maxY && maxX <= maxZ) {
+      t = maxX;
+      maxX += deltaX;
+      x += stepX;
+      normalX = -stepX;
+    } else if (maxY <= maxZ) {
+      t = maxY;
+      maxY += deltaY;
+      y += stepY;
+      normalY = -stepY;
+    } else {
+      t = maxZ;
+      maxZ += deltaZ;
+      z += stepZ;
+      normalZ = -stepZ;
+    }
+
+    if (y < 0 || y >= 256) {
+      return undefined;
+    }
+    if (x >> 4 !== chunkX || z >> 4 !== chunkZ) {
+      chunkX = x >> 4;
+      chunkZ = z >> 4;
+      inLoadedArea = world.hasRenderedChunk(chunkX, chunkZ);
+    }
+    if (!inLoadedArea) {
+      return undefined;
+    }
+    const blockId = world.getBlock(x, y, z);
+    if (blockId === BlockId.Air) {
+      continue;
+    }
+    return {
+      position: new THREE.Vector3(
+        origin.x + direction.x * t,
+        origin.y + direction.y * t,
+        origin.z + direction.z * t
+      ),
+      normal: new THREE.Vector3(normalX, normalY, normalZ),
+      blockId
+    };
   }
-  return { position: intersection.point, normal: face.normal.clone() };
+  return undefined;
 }
 
 function toBlockPosition(target: TargetBlock, direction: number): THREE.Vector3 {
+  // 水面顶面低于方块顶面（按水位下沉），命中点落在该水格内部；
+  // 与网格射线保持一致：命中水格顶面时破坏/放置都对准该水格本身。
+  const offset = target.blockId === BlockId.Water && target.normal.y > 0 ? -1 : direction;
   return target.position
     .clone()
-    .addScaledVector(target.normal, direction * 0.01)
+    .addScaledVector(target.normal, offset * 0.01)
     .floor();
 }
 

@@ -38,6 +38,9 @@ export class VoxelWorldView implements BlockLookup {
   private readonly group = new THREE.Group();
   private readonly radius: number;
   private readonly renderedChunks = new Map<string, RenderedChunk>();
+  // 跨区块边界写入时顺带需要重建的相邻区块：延后到 update 每帧至多重建一个，
+  // 避免一次操作同步重建多个区块造成卡顿。
+  private readonly pendingChunkRebuilds = new Set<string>();
   // 运行时水位场：仅记录"调度器管理的流动/下落水"格 → 其 level（0..MAX）。
   // 键为世界坐标 "x,y,z"。不含永久水源（水源恒满，由方块本身表示），不进存档。
   private readonly waterLevels = new Map<string, number>();
@@ -76,7 +79,8 @@ export class VoxelWorldView implements BlockLookup {
   }
 
   // trackChange 默认 true，破坏/放置会记入存档差异。
-  // 会即时重建受影响区块的完整网格（实心 + 水面），供玩家操作使用。
+  // 会即时重建本区块的完整网格（实心 + 水面）供玩家操作使用；
+  // 跨区块边界的相邻区块延后到逐帧队列里重建，摊开一次操作的成本。
   public setBlock(x: number, y: number, z: number, blockId: BlockId, trackChange = true): boolean {
     if (!this.writeBlock(x, y, z, blockId, trackChange)) {
       return false;
@@ -84,11 +88,17 @@ export class VoxelWorldView implements BlockLookup {
     const chunkPosition = getChunkPosition({ x, y, z });
     const localPosition = getLocalBlockPosition({ x, y, z });
     this.refreshRenderedChunk(chunkPosition.x, chunkPosition.z);
-    if (localPosition.x === 0) this.refreshRenderedChunk(chunkPosition.x - 1, chunkPosition.z);
-    if (localPosition.x === 15) this.refreshRenderedChunk(chunkPosition.x + 1, chunkPosition.z);
-    if (localPosition.z === 0) this.refreshRenderedChunk(chunkPosition.x, chunkPosition.z - 1);
-    if (localPosition.z === 15) this.refreshRenderedChunk(chunkPosition.x, chunkPosition.z + 1);
+    if (localPosition.x === 0) this.queueChunkRebuild(chunkPosition.x - 1, chunkPosition.z);
+    if (localPosition.x === 15) this.queueChunkRebuild(chunkPosition.x + 1, chunkPosition.z);
+    if (localPosition.z === 0) this.queueChunkRebuild(chunkPosition.x, chunkPosition.z - 1);
+    if (localPosition.z === 15) this.queueChunkRebuild(chunkPosition.x, chunkPosition.z + 1);
     return true;
+  }
+
+  // 该区块是否已渲染（有网格）。供射线遍历等工具限定在已加载区域内查询，
+  // 避免 getBlock 顺带生成未加载区块。
+  public hasRenderedChunk(chunkX: number, chunkZ: number): boolean {
+    return this.renderedChunks.has(getChunkKey({ x: chunkX, z: chunkZ }));
   }
 
   // 运行时写入/移除一格水：不进存档、且不触发即时重建。
@@ -223,6 +233,14 @@ export class VoxelWorldView implements BlockLookup {
         this.removeRenderedChunk(key, rendered);
       }
     }
+
+    // 每帧至多重建一个待办区块，把跨边界重建的开销摊到多帧。
+    const pendingKey = this.pendingChunkRebuilds.values().next().value;
+    if (pendingKey !== undefined) {
+      this.pendingChunkRebuilds.delete(pendingKey);
+      const [pendingX, pendingZ] = pendingKey.split(',').map(Number) as [number, number];
+      this.refreshRenderedChunk(pendingX, pendingZ);
+    }
   }
 
   private getChunk(x: number, z: number): Chunk {
@@ -250,6 +268,15 @@ export class VoxelWorldView implements BlockLookup {
     this.disposeSolid(rendered.solid);
     this.disposeWater(rendered.water);
     this.renderedChunks.delete(key);
+    this.pendingChunkRebuilds.delete(key);
+  }
+
+  // 把相邻区块的完整重建（实心 + 水面）放入待办队列，由 update 每帧至多执行一个。
+  private queueChunkRebuild(chunkX: number, chunkZ: number): void {
+    const key = getChunkKey({ x: chunkX, z: chunkZ });
+    if (this.renderedChunks.has(key)) {
+      this.pendingChunkRebuilds.add(key);
+    }
   }
 
   // 释放实心地形网格：几何体与其独占材质都可销毁。
