@@ -30,6 +30,10 @@ const activeSaveName = searchParameters.get('saveName')?.trim() || '默认存档
 const fixedWorld = searchParameters.get('world') === 'fixed';
 const metadata = createWorldMetadata(defaultSeed, '0.1.0');
 const app = document.querySelector<HTMLElement>('#app');
+// 区块加载半径：2 → 5×5 区块（80×80 方块）。fixed 模式被边界裁剪回 3×3。
+const CHUNK_RADIUS = 2;
+// HUD 展示的区块规模：fixed 模式边界固定 3×3，无限模式随半径计算。
+const hudChunkCount = fixedWorld ? 3 : CHUNK_RADIUS * 2 + 1;
 
 if (app === null) {
   throw new Error('找不到游戏根节点');
@@ -42,7 +46,7 @@ app.innerHTML = `
     <h1>可扩展的方块世界</h1>
     <p>种子：<strong>${metadata.seed}</strong></p>
     <p>存档：<strong>${activeSaveName}</strong></p>
-    <p>区块：<strong>3 × 3</strong> · ${fixedWorld ? '固定地图' : '无限地图预览'} · 昼夜天空已启用</p>
+    <p>区块：<strong>${hudChunkCount} × ${hudChunkCount}</strong> · ${fixedWorld ? '固定地图' : '无限地图预览'} · 昼夜天空已启用</p>
     <p>视角：<strong id="camera-mode">第一人称</strong> · 飞行：<strong id="flight-state">关闭</strong></p>
     <p>当前方块：<strong id="selected-block">草方块</strong></p>
     <p class="hint">点击画面锁定鼠标 · 左键破坏拾取 · 右键放置（消耗 1 个）· 1-6/滚轮选方块（水 ∞）· WASD 移动 · 空格跳跃 · F 飞行 · V 切换视角</p>
@@ -206,7 +210,7 @@ function updateUnderwaterEffect(deltaSeconds: number): void {
 
 const world = new VoxelWorldView({
   seed: defaultSeed,
-  radius: 1,
+  radius: CHUNK_RADIUS,
   boundary: fixedWorld ? new FixedWorldBoundary({ x: -1, z: -1 }, { x: 1, z: 1 }) : undefined
 });
 scene.add(world.object3d);
@@ -384,8 +388,9 @@ const breakOverlay = new THREE.Mesh(
 breakOverlay.visible = false;
 scene.add(breakOverlay);
 
-// 准星射线最远遍历的格数：覆盖视距内的已渲染区块（半径 1 ≈ 最多约 48 格外）。
-const TARGET_REACH = 64;
+// 准星射线最远遍历的格数：覆盖视距内的已渲染区块（半径 CHUNK_RADIUS 的最远角
+// ≈ (2×半径+1)×16×1.2，半径 2 时 = 96 格）。
+const TARGET_REACH = (CHUNK_RADIUS * 2 + 1) * 16 * 1.2;
 
 // 复用临时向量，避免每帧分配。
 const targetDirection = new THREE.Vector3();
