@@ -1,4 +1,4 @@
-import type { ChunkBlockChange, ModFingerprint, WorldMetadata } from '@gm/core';
+import type { ChunkBlockChange, InventoryEntry, ModFingerprint, WorldMetadata } from '@gm/core';
 
 export interface StoredChunkDelta {
   readonly x: number;
@@ -10,6 +10,8 @@ export interface StoredPlayerState {
   readonly x: number;
   readonly y: number;
   readonly z: number;
+  /** 物品栏持有数量；旧存档没有该字段（undefined 视为空物品栏），无需格式迁移。 */
+  readonly inventory?: readonly InventoryEntry[];
 }
 
 export interface StoredWorld {
@@ -79,9 +81,17 @@ export function createStoredWorld(
   name: string,
   metadata: WorldMetadata,
   player: StoredPlayerState,
+  inventory: readonly InventoryEntry[],
   chunks: readonly StoredChunkDelta[]
 ): StoredWorld {
-  return { id, name, metadata, player, chunks, updatedAt: Date.now() };
+  return {
+    id,
+    name,
+    metadata,
+    player: { ...player, inventory },
+    chunks,
+    updatedAt: Date.now()
+  };
 }
 
 export function hasMatchingMods(

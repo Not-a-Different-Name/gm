@@ -16,6 +16,8 @@ export interface BlockDefinition {
   readonly solid: boolean;
   readonly transparent: boolean;
   readonly color: number;
+  /** 破坏硬度（相对值，只驱动破坏音色等表现，不改变实际破坏耗时）。 */
+  readonly hardness: number;
   readonly textures: BlockTextureSet;
 }
 
@@ -32,6 +34,7 @@ export const BLOCK_DEFINITIONS: Readonly<Record<BlockId, BlockDefinition>> = {
     solid: false,
     transparent: true,
     color: 0,
+    hardness: 0,
     textures: { top: 'air', side: 'air', bottom: 'air' }
   },
   [BlockId.Grass]: {
@@ -40,6 +43,7 @@ export const BLOCK_DEFINITIONS: Readonly<Record<BlockId, BlockDefinition>> = {
     solid: true,
     transparent: false,
     color: 0x6f9c45,
+    hardness: 0.6,
     textures: { top: 'grass-top', side: 'grass-side', bottom: 'dirt' }
   },
   [BlockId.Dirt]: {
@@ -48,6 +52,7 @@ export const BLOCK_DEFINITIONS: Readonly<Record<BlockId, BlockDefinition>> = {
     solid: true,
     transparent: false,
     color: 0x8a603c,
+    hardness: 0.6,
     textures: { top: 'dirt', side: 'dirt', bottom: 'dirt' }
   },
   [BlockId.Stone]: {
@@ -56,6 +61,7 @@ export const BLOCK_DEFINITIONS: Readonly<Record<BlockId, BlockDefinition>> = {
     solid: true,
     transparent: false,
     color: 0x777b80,
+    hardness: 1.5,
     textures: { top: 'stone', side: 'stone', bottom: 'stone' }
   },
   [BlockId.Sand]: {
@@ -64,6 +70,7 @@ export const BLOCK_DEFINITIONS: Readonly<Record<BlockId, BlockDefinition>> = {
     solid: true,
     transparent: false,
     color: 0xd8c37e,
+    hardness: 0.5,
     textures: { top: 'sand', side: 'sand', bottom: 'sand' }
   },
   [BlockId.Water]: {
@@ -72,6 +79,7 @@ export const BLOCK_DEFINITIONS: Readonly<Record<BlockId, BlockDefinition>> = {
     solid: false,
     transparent: true,
     color: 0x3c84c6,
+    hardness: 0,
     textures: { top: 'water', side: 'water', bottom: 'water' }
   },
   [BlockId.Wood]: {
@@ -80,6 +88,7 @@ export const BLOCK_DEFINITIONS: Readonly<Record<BlockId, BlockDefinition>> = {
     solid: true,
     transparent: false,
     color: 0x765133,
+    hardness: 0.8,
     textures: { top: 'wood-top', side: 'wood-side', bottom: 'wood-top' }
   },
   [BlockId.Leaves]: {
@@ -89,6 +98,7 @@ export const BLOCK_DEFINITIONS: Readonly<Record<BlockId, BlockDefinition>> = {
     solid: true,
     transparent: true,
     color: 0x4e7f40,
+    hardness: 0.2,
     textures: { top: 'leaves', side: 'leaves', bottom: 'leaves' }
   },
   [BlockId.Bedrock]: {
@@ -97,6 +107,8 @@ export const BLOCK_DEFINITIONS: Readonly<Record<BlockId, BlockDefinition>> = {
     solid: true,
     transparent: false,
     color: 0x35383a,
+    // 基岩不可破坏：Infinity 只参与硬度查表（音色分档），不用于任何算术。
+    hardness: Infinity,
     textures: { top: 'bedrock', side: 'bedrock', bottom: 'bedrock' }
   }
 };
