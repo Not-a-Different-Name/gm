@@ -27,6 +27,12 @@ export interface VoxelWorldViewOptions {
 const DEFAULT_DATA_CHUNKS_PER_FRAME = 2;
 const DEFAULT_MESH_CHUNKS_PER_FRAME = 1;
 const DEFAULT_REBUILD_CHUNKS_PER_FRAME = 1;
+// 区块数据缓存上限：256 块 ≈ 16 MiB（每块 64 KiB），超出后按四条件淘汰。
+const MAX_CACHED_CHUNKS = 256;
+// 淘汰目标 = 上限 × 0.75（回滞防抖，避免在边界来回增删抖动）。
+const CACHE_EVICTION_TARGET = Math.floor(MAX_CACHED_CHUNKS * 0.75);
+// 每帧至多淘汰的区块数，避免单帧回收过多造成卡顿。
+const EVICTIONS_PER_FRAME = 4;
 
 export interface ChunkDelta {
   readonly x: number;
@@ -309,6 +315,8 @@ export class VoxelWorldView implements BlockLookup {
       const [chunkX, chunkZ] = splitChunkKey(entry[0]);
       this.refreshRenderedChunk(chunkX, chunkZ);
     }
+
+    this.evictCachedChunks(center.x, center.z);
   }
 
   private getChunk(x: number, z: number): Chunk {
@@ -366,6 +374,47 @@ export class VoxelWorldView implements BlockLookup {
     }
     queue.delete(nearestKey);
     return [nearestKey, nearestDistance];
+  }
+
+  // 缓存淘汰：超过 MAX_CACHED_CHUNKS 后，每帧回收至多 4 个区块数据，距玩家最远优先，
+  // 直到 size ≤ 上限 × 0.75 为止。仅回收同时满足以下条件的区块：
+  // ①未渲染（已渲染的网格持有其数据引用）；②无未保存修改；③世界范围内无运行时水位
+  // 记录（否则流动水随淘汰凭空消失）；回收时防御性清掉三队列中的同名条目。
+  private evictCachedChunks(centerX: number, centerZ: number): void {
+    if (this.chunks.size <= MAX_CACHED_CHUNKS) {
+      return;
+    }
+
+    const wetChunks = new Set<string>();
+    for (const key of this.waterLevels.keys()) {
+      const [x, , z] = key.split(',').map(Number) as [number, number, number];
+      const chunkPosition = getChunkPosition({ x, y: 0, z });
+      wetChunks.add(getChunkKey(chunkPosition));
+    }
+
+    const candidates: { key: string; distance: number }[] = [];
+    for (const chunk of this.chunks.values()) {
+      const key = getChunkKey({ x: chunk.x, z: chunk.z });
+      if (this.renderedChunks.has(key) || wetChunks.has(key) || chunk.getChanges().length > 0) {
+        continue;
+      }
+      const dx = chunk.x - centerX;
+      const dz = chunk.z - centerZ;
+      candidates.push({ key, distance: dx * dx + dz * dz });
+    }
+    candidates.sort((a, b) => b.distance - a.distance);
+
+    const evictCount = Math.min(EVICTIONS_PER_FRAME, this.chunks.size - CACHE_EVICTION_TARGET);
+    for (let index = 0; index < evictCount; index += 1) {
+      const candidate = candidates[index];
+      if (candidate === undefined) {
+        break;
+      }
+      this.chunks.delete(candidate.key);
+      this.pendingData.delete(candidate.key);
+      this.pendingMesh.delete(candidate.key);
+      this.pendingChunkRebuilds.delete(candidate.key);
+    }
   }
 
   // 释放实心地形网格：只销毁几何体，实心材质与水面材质一样在所有区块间共享。
