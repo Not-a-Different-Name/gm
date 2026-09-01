@@ -31,3 +31,5 @@
 方块与交互完善同样完成：底部像素风热键栏显示持有数量（`apps/web/src/hotbar.ts`），物品栏为掉落+拾取+消耗语义并随存档保存（`packages/core/src/inventory.ts`，附 13 个单元测试；水不计入物品栏、恒可放置，水槽显示 ∞）；破坏/放置音效为 Web Audio 程序化合成、按硬度分三档（`apps/web/src/sound.ts`）；破坏掉落物为运行时实体、走近自动拾取、穿透水沉底（`packages/renderer/src/drop-items.ts`）；方块粒子重写为 96 粒预分配对象池（`packages/renderer/src/block-particles.ts`）。以上均为独立运行时扩展，不影响世界生成与存档兼容性。
 
 性能优化同样完成：实心地形升级为贪心网格（core 纯函数 `greedy-mesh.ts` 六方向 2D 扫描合并共面，附 12 个单元测试；renderer 纯函数 `chunk-mesh-geometry.ts` 按方向角格表转顶点数组，`solid-material.ts` 材质单例 onBeforeCompile 注入 fract 图集平铺采样）；区块流送改分帧预算（每帧数据 2 / 网格 1 / 待办重建 1，可配置，三队列均按距玩家距离²最近优先），区块数据缓存上限 256 块、按"未渲染 + 无未保存修改 + 无运行时水位"四条件逐帧淘汰（回滞 0.75，含水区块不淘汰）；视距半径 1→2（5×5 区块，fixed 模式仍 3×3，雾与相机参数不变）；存档保存成功后按快照清除修改记录，存档体积不再随编辑量累积增长。
+
+存档完善同样完成：独立存档管理界面（主界面石头蒙版、存档界面泥土蒙版，列表行仅 [进入][管理] 两按钮 + 详情面板五操作），支持重命名、删除、导出 JSON 下载与导入（损坏/版本过新按类提示、同 id 覆盖确认、种子不同自动同步种子输入）；存储层新增 `packages/storage/src/world-format.ts` 纯函数校验与迁移（`SaveFormatError` 按 invalid-json/corrupted/too-new 归类、`MIGRATIONS` 迁移链框架），存储层共 22 个单元测试（含 fake-indexeddb 用例）；保存失败按配额/其他分类提示，返回主界面前强制落盘，进入世界前等待恢复完成（损坏可删除并进入新世界）。
