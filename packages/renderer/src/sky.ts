@@ -173,6 +173,9 @@ export interface SkyOptions {
  */
 export class Sky {
   public readonly object3d = new THREE.Group();
+  // 纯视觉元素（穹顶/日月/星辰）：水下会整组隐藏防穿透水面。
+  // 与灯光分开存放——灯光不能跟着隐藏，否则水下世界失去全部光照、一片漆黑。
+  public readonly visuals = new THREE.Group();
 
   private readonly dome: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>;
   private readonly sun: THREE.Sprite;
@@ -232,8 +235,8 @@ export class Sky {
 
     this.stars = createStars();
 
-    this.object3d.add(this.dome, this.sun, this.moon, this.stars);
-    this.object3d.add(this.sunLight, this.moonLight, this.hemiLight);
+    this.visuals.add(this.dome, this.sun, this.moon, this.stars);
+    this.object3d.add(this.visuals, this.sunLight, this.moonLight, this.hemiLight);
 
     this.applyTime();
   }

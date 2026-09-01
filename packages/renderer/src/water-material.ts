@@ -66,7 +66,10 @@ export function getWaterMaterial(): THREE.MeshLambertMaterial {
       map: waterTexture,
       transparent: true,
       opacity: 0.72,
-      depthWrite: false
+      depthWrite: false,
+      // 双面渲染：水面网格只有顶面与侧面、没有底面，
+      // 否则潜到水下向上看时水面完全消失。
+      side: THREE.DoubleSide
     });
   }
   return material;

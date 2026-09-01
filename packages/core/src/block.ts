@@ -85,7 +85,8 @@ export const BLOCK_DEFINITIONS: Readonly<Record<BlockId, BlockDefinition>> = {
   [BlockId.Leaves]: {
     id: BlockId.Leaves,
     name: 'gm:leaves',
-    solid: false,
+    // 树叶是实体方块（阻挡玩家与第三视角镜头），但仍透明（不参与面剔除、可看穿）。
+    solid: true,
     transparent: true,
     color: 0x4e7f40,
     textures: { top: 'leaves', side: 'leaves', bottom: 'leaves' }

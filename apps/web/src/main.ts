@@ -1,6 +1,13 @@
-import { BLOCK_DEFINITIONS, BlockId, FixedWorldBoundary, createWorldMetadata } from '@gm/core';
+import {
+  BLOCK_DEFINITIONS,
+  BlockId,
+  FixedWorldBoundary,
+  createWorldMetadata,
+  waterSurfaceHeight
+} from '@gm/core';
 import {
   BlockParticles,
+  Clouds,
   PlayerController,
   Sky,
   VoxelWorldView,
@@ -140,12 +147,52 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.shadowMap.enabled = false;
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0x9fd8f4, 130, 300);
+const fog = new THREE.Fog(0x9fd8f4, 130, 300);
+scene.fog = fog;
 
 // 昼夜天空：渐变穹顶、方块日月、星点与随时间变化的光照。
 const sky = new Sky();
 scene.add(sky.object3d);
 const horizonColor = new THREE.Color();
+
+// 像素云层：两层云挂在天空视觉组内（跟随相机、水下自动隐藏），云形由种子确定性生成。
+const clouds = new Clouds({ seed: defaultSeed });
+sky.visuals.add(clouds.object3d);
+
+// 水下视觉：相机没入水面后，雾与清屏色过渡为深蓝（与地平线色混合，昼夜自然变暗）；
+// 雾的近端留 6 格清晰区、32 格外才全雾，深水也能看清水底。
+// 天空穹顶/日月/星辰/云层都关闭了雾效，必须隐藏以防穿透水面（sky.visuals，不含灯光）。
+const underwaterFogColor = new THREE.Color(0x17436b);
+const UNDERWATER_FOG_NEAR = 6;
+const UNDERWATER_FOG_FAR = 32;
+const UNDERWATER_BLEND_RATE = 4;
+let underwaterAmount = 0;
+const underwaterColor = new THREE.Color();
+
+// 按相机所在格判定是否没入水面（雾是相机空间效果，与玩家身体物理分开判定，
+// 第一/第三人称都跟随实际观察位置），并把 0..1 的入水量平滑趋近目标避免闪烁。
+function updateUnderwaterEffect(deltaSeconds: number): void {
+  const cellX = Math.floor(camera.position.x);
+  const cellY = Math.floor(camera.position.y);
+  const cellZ = Math.floor(camera.position.z);
+  // 上方格也是水时相机必然没入水面（水面在更上层），不能再用"本格水面高"比较：
+  // 水格顶部与下一格之间的空隙会让判定误以为已出水，垂直移动时雾反复切换。
+  const submerged =
+    world.getBlock(cellX, cellY, cellZ) === BlockId.Water &&
+    (world.getBlock(cellX, cellY + 1, cellZ) === BlockId.Water ||
+      camera.position.y < waterSurfaceHeight(cellY, world.getWaterLevel(cellX, cellY, cellZ)));
+  const target = submerged ? 1 : 0;
+  underwaterAmount +=
+    (target - underwaterAmount) * Math.min(1, deltaSeconds * UNDERWATER_BLEND_RATE);
+
+  underwaterColor.copy(horizonColor).lerp(underwaterFogColor, underwaterAmount);
+  fog.near = THREE.MathUtils.lerp(130, UNDERWATER_FOG_NEAR, underwaterAmount);
+  fog.far = THREE.MathUtils.lerp(300, UNDERWATER_FOG_FAR, underwaterAmount);
+  fog.color.copy(underwaterColor);
+  renderer.setClearColor(underwaterColor);
+  // 只隐藏天空的视觉元素；灯光留在 object3d 根部，水下世界保持光照。
+  sky.visuals.visible = underwaterAmount < 0.5;
+}
 
 const world = new VoxelWorldView({
   seed: defaultSeed,
@@ -402,12 +449,11 @@ function getTargetBlock(): TargetBlock | undefined {
 }
 
 function toBlockPosition(target: TargetBlock, direction: number): THREE.Vector3 {
-  // 水面顶面低于方块顶面（按水位下沉），命中点落在该水格内部；
-  // 与网格射线保持一致：命中水格顶面时破坏/放置都对准该水格本身。
-  const offset = target.blockId === BlockId.Water && target.normal.y > 0 ? -1 : direction;
+  // 射线穿透水后命中的一定是实体方块：目标格取命中面朝向玩家一侧的邻格。
+  // 放置时若该邻格是水格，会被实体方块直接替换（水是低级方块、可被填充）。
   return target.position
     .clone()
-    .addScaledVector(target.normal, offset * 0.01)
+    .addScaledVector(target.normal, direction * 0.01)
     .floor();
 }
 
@@ -531,6 +577,10 @@ canvas.addEventListener('mousedown', (event) => {
       return;
     }
     const blockPosition = toBlockPosition(target, 1);
+    // 拒绝把方块放进自己的碰撞盒里（水中向下放置/贴墙放置时容易命中身体所在格）。
+    if (player.intersectsBlockPosition(blockPosition.x, blockPosition.y, blockPosition.z)) {
+      return;
+    }
     if (world.setBlock(blockPosition.x, blockPosition.y, blockPosition.z, selectedBlock)) {
       // 放置的水源本身写入存档；由它向四周蔓延出的水仅存在于运行时（不存档）。
       if (selectedBlock === BlockId.Water) {

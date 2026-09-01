@@ -8,6 +8,8 @@ import {
   isWaterFlowable,
   waterFallsThrough,
   waterOutflow,
+  waterOverlapHeight,
+  waterSurfaceHeight,
   type WaterCellState,
   type WaterNeighborhood
 } from './water-flow.js';
@@ -32,6 +34,36 @@ describe('waterFallsThrough', () => {
     expect(waterFallsThrough(BlockId.Air)).toBe(true);
     expect(waterFallsThrough(BlockId.Water)).toBe(true);
     expect(waterFallsThrough(BlockId.Stone)).toBe(false);
+  });
+});
+
+describe('waterSurfaceHeight', () => {
+  it('按水位分级下沉，无水位信息按水源处理', () => {
+    expect(waterSurfaceHeight(10, 0)).toBe(10.875);
+    expect(waterSurfaceHeight(10, 1)).toBeCloseTo(10.685, 12);
+    expect(waterSurfaceHeight(10, 3)).toBeCloseTo(10.305, 12);
+    expect(waterSurfaceHeight(10, WATER_NONE)).toBe(10.875);
+  });
+
+  it('超出最大级的 level 被钳制', () => {
+    expect(waterSurfaceHeight(10, 99)).toBeCloseTo(10.305, 12);
+  });
+});
+
+describe('waterOverlapHeight', () => {
+  it('身体区间与水体区间的重叠高度', () => {
+    // 满水格 y=10（水面 10.875）与身体 [10, 11.8] 重叠 0.875。
+    expect(waterOverlapHeight(10, 0, 10, 11.8)).toBe(0.875);
+    // level 3 浅水（水面约 10.305）重叠 0.305。
+    expect(waterOverlapHeight(10, 3, 10, 11.8)).toBeCloseTo(0.305, 12);
+  });
+
+  it('完全在水面以上则无重叠', () => {
+    expect(waterOverlapHeight(10, 0, 11.5, 13.3)).toBe(0);
+  });
+
+  it('确定性：相同输入产生相同输出', () => {
+    expect(waterOverlapHeight(10, 2, 10.1, 11.9)).toBe(waterOverlapHeight(10, 2, 10.1, 11.9));
   });
 });
 

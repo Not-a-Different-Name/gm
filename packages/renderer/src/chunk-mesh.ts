@@ -1,4 +1,4 @@
-import { BLOCK_DEFINITIONS, BlockId, MAX_WATER_LEVEL, WATER_NONE, isOpaqueBlock } from '@gm/core';
+import { BLOCK_DEFINITIONS, BlockId, isOpaqueBlock, waterSurfaceHeight } from '@gm/core';
 import type { Chunk } from '@gm/core';
 import * as THREE from 'three';
 
@@ -133,19 +133,6 @@ function addFace(
     colors.push(shadedColor.r, shadedColor.g, shadedColor.b);
     uvs.push(uv[0]!, uv[1]!);
   }
-}
-
-// 水源顶面相对整格顶部的下沉量（世界单位）：水源约为满格的 14/16，
-// 比岸边地面（整格顶 1.0）略低，符合"水面低于岸边"。
-const WATER_SOURCE_DROP = 0.125;
-// 每高一级水位额外多下沉的量：流动水越远越薄，水面呈阶梯状向外下降。
-const WATER_LEVEL_DROP = 0.19;
-
-// 依据水位计算该顶层水块"顶面"的世界高度（整格底为 blockY）。
-// level 0（水源）最高，越薄越低；无水位信息时按水源处理。
-function waterSurfaceHeight(blockY: number, level: number): number {
-  const clampedLevel = level === WATER_NONE ? 0 : Math.min(level, MAX_WATER_LEVEL);
-  return blockY + 1 - WATER_SOURCE_DROP - clampedLevel * WATER_LEVEL_DROP;
 }
 
 // 水面 UV 直接取世界坐标（每个世界单位对应一次平铺），
