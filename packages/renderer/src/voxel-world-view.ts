@@ -17,7 +17,16 @@ export interface VoxelWorldViewOptions {
   readonly seed: string;
   readonly radius: number;
   readonly boundary?: WorldBoundary;
+  /** 每帧流送预算（可选，默认 2/1/1）：生成数据 / 构建网格 / 执行待办重建的区块数。 */
+  readonly dataChunksPerFrame?: number;
+  readonly meshChunksPerFrame?: number;
+  readonly rebuildChunksPerFrame?: number;
 }
+
+// 分帧流送默认预算：数据生成 2、网格构建 1、待办重建 1（重建保持原有节奏）。
+const DEFAULT_DATA_CHUNKS_PER_FRAME = 2;
+const DEFAULT_MESH_CHUNKS_PER_FRAME = 1;
+const DEFAULT_REBUILD_CHUNKS_PER_FRAME = 1;
 
 export interface ChunkDelta {
   readonly x: number;
@@ -31,6 +40,11 @@ interface RenderedChunk {
   water: THREE.Object3D;
 }
 
+// getChunkKey 产生的 "x,z" 键解析回区块坐标。
+function splitChunkKey(key: string): [number, number] {
+  return key.split(',').map(Number) as [number, number];
+}
+
 export class VoxelWorldView implements BlockLookup {
   private readonly generator: TerrainGenerator;
   private readonly boundary: WorldBoundary;
@@ -38,9 +52,19 @@ export class VoxelWorldView implements BlockLookup {
   private readonly group = new THREE.Group();
   private readonly radius: number;
   private readonly renderedChunks = new Map<string, RenderedChunk>();
-  // 跨区块边界写入时顺带需要重建的相邻区块：延后到 update 每帧至多重建一个，
-  // 避免一次操作同步重建多个区块造成卡顿。
-  private readonly pendingChunkRebuilds = new Set<string>();
+  // 分帧流送队列：key → 与玩家中心区块的距离²，消费时最近优先（线性扫，队列 ≤49 项）。
+  // pendingData 待生成数据，pendingMesh 数据已就绪待构建网格。
+  private readonly pendingData = new Map<string, number>();
+  private readonly pendingMesh = new Map<string, number>();
+  // 跨区块边界写入时顺带需要重建的相邻区块：延后到 update 每帧按预算重建，
+  // 避免一次操作同步重建多个区块造成卡顿。同样按距离²最近优先。
+  private readonly pendingChunkRebuilds = new Map<string, number>();
+  private readonly dataChunksPerFrame: number;
+  private readonly meshChunksPerFrame: number;
+  private readonly rebuildChunksPerFrame: number;
+  // 最近一次 update 的玩家中心区块，供重建队列计算距离优先级。
+  private playerChunkX = 0;
+  private playerChunkZ = 0;
   // 运行时水位场：仅记录"调度器管理的流动/下落水"格 → 其 level（0..MAX）。
   // 键为世界坐标 "x,y,z"。不含永久水源（水源恒满，由方块本身表示），不进存档。
   private readonly waterLevels = new Map<string, number>();
@@ -49,6 +73,9 @@ export class VoxelWorldView implements BlockLookup {
     this.generator = new TerrainGenerator(options.seed);
     this.boundary = options.boundary ?? new InfiniteWorldBoundary();
     this.radius = options.radius;
+    this.dataChunksPerFrame = options.dataChunksPerFrame ?? DEFAULT_DATA_CHUNKS_PER_FRAME;
+    this.meshChunksPerFrame = options.meshChunksPerFrame ?? DEFAULT_MESH_CHUNKS_PER_FRAME;
+    this.rebuildChunksPerFrame = options.rebuildChunksPerFrame ?? DEFAULT_REBUILD_CHUNKS_PER_FRAME;
 
     this.update(0, 0);
   }
@@ -222,8 +249,11 @@ export class VoxelWorldView implements BlockLookup {
 
   public update(worldX: number, worldZ: number): void {
     const center = getChunkPosition({ x: Math.floor(worldX), y: 0, z: Math.floor(worldZ) });
+    this.playerChunkX = center.x;
+    this.playerChunkZ = center.z;
     const requiredChunks = new Set<string>();
 
+    // 登记需求区块：已渲染的保留，缺失的进入分帧流送队列（距玩家最近优先）。
     for (let chunkX = center.x - this.radius; chunkX <= center.x + this.radius; chunkX += 1) {
       for (let chunkZ = center.z - this.radius; chunkZ <= center.z + this.radius; chunkZ += 1) {
         const position = { x: chunkX, z: chunkZ };
@@ -233,24 +263,51 @@ export class VoxelWorldView implements BlockLookup {
 
         const key = getChunkKey(position);
         requiredChunks.add(key);
-        if (!this.renderedChunks.has(key)) {
-          this.addRenderedChunk(chunkX, chunkZ);
+        if (!this.renderedChunks.has(key) && !this.pendingMesh.has(key)) {
+          const dx = chunkX - center.x;
+          const dz = chunkZ - center.z;
+          this.pendingData.set(key, dx * dx + dz * dz);
         }
       }
     }
 
+    // 卸载同步执行（离开视距立即释放），不受每帧预算限制。
     for (const [key, rendered] of this.renderedChunks) {
       if (!requiredChunks.has(key)) {
         this.removeRenderedChunk(key, rendered);
       }
     }
 
-    // 每帧至多重建一个待办区块，把跨边界重建的开销摊到多帧。
-    const pendingKey = this.pendingChunkRebuilds.values().next().value;
-    if (pendingKey !== undefined) {
-      this.pendingChunkRebuilds.delete(pendingKey);
-      const [pendingX, pendingZ] = pendingKey.split(',').map(Number) as [number, number];
-      this.refreshRenderedChunk(pendingX, pendingZ);
+    // 预算一：生成区块数据（最近优先），完成后移入网格队列。
+    for (let count = 0; count < this.dataChunksPerFrame; count += 1) {
+      const entry = this.takeNearestEntry(this.pendingData);
+      if (entry === undefined) {
+        break;
+      }
+      const [chunkX, chunkZ] = splitChunkKey(entry[0]);
+      this.getChunk(chunkX, chunkZ);
+      this.pendingMesh.set(entry[0], entry[1]);
+    }
+
+    // 预算二：构建网格（最近优先）。构建时的邻块查询可能顺带生成视距外的
+    // 幽灵区块（面剔除正确性前提），仍不计入预算。
+    for (let count = 0; count < this.meshChunksPerFrame; count += 1) {
+      const entry = this.takeNearestEntry(this.pendingMesh);
+      if (entry === undefined) {
+        break;
+      }
+      const [chunkX, chunkZ] = splitChunkKey(entry[0]);
+      this.addRenderedChunk(chunkX, chunkZ);
+    }
+
+    // 预算三：执行跨边界待办重建（最近优先），把一次操作的重建开销摊到多帧。
+    for (let count = 0; count < this.rebuildChunksPerFrame; count += 1) {
+      const entry = this.takeNearestEntry(this.pendingChunkRebuilds);
+      if (entry === undefined) {
+        break;
+      }
+      const [chunkX, chunkZ] = splitChunkKey(entry[0]);
+      this.refreshRenderedChunk(chunkX, chunkZ);
     }
   }
 
@@ -280,14 +337,35 @@ export class VoxelWorldView implements BlockLookup {
     this.disposeWater(rendered.water);
     this.renderedChunks.delete(key);
     this.pendingChunkRebuilds.delete(key);
+    this.pendingMesh.delete(key);
+    this.pendingData.delete(key);
   }
 
-  // 把相邻区块的完整重建（实心 + 水面）放入待办队列，由 update 每帧至多执行一个。
+  // 把相邻区块的完整重建（实心 + 水面）放入待办队列，由 update 按预算执行。
   private queueChunkRebuild(chunkX: number, chunkZ: number): void {
     const key = getChunkKey({ x: chunkX, z: chunkZ });
     if (this.renderedChunks.has(key)) {
-      this.pendingChunkRebuilds.add(key);
+      const dx = chunkX - this.playerChunkX;
+      const dz = chunkZ - this.playerChunkZ;
+      this.pendingChunkRebuilds.set(key, dx * dx + dz * dz);
     }
+  }
+
+  // 取出队列中距玩家最近的条目（线性扫，队列 ≤49 项）。
+  private takeNearestEntry(queue: Map<string, number>): [string, number] | undefined {
+    let nearestKey: string | undefined;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const [key, distance] of queue) {
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestKey = key;
+      }
+    }
+    if (nearestKey === undefined) {
+      return undefined;
+    }
+    queue.delete(nearestKey);
+    return [nearestKey, nearestDistance];
   }
 
   // 释放实心地形网格：只销毁几何体，实心材质与水面材质一样在所有区块间共享。
