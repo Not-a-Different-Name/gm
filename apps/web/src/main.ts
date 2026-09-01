@@ -16,17 +16,28 @@ import {
   WaterFlowController,
   updateWaterMaterial
 } from '@gm/renderer';
-import { WorldStorage, createStoredWorld } from '@gm/storage';
+import {
+  SaveFormatError,
+  WorldStorage,
+  createStoredWorld,
+  parseWorldFile,
+  serializeWorld
+} from '@gm/storage';
+import type { StoredWorld } from '@gm/storage';
 import * as THREE from 'three';
 
+import { showDialog } from './dialog.js';
 import { Hotbar } from './hotbar.js';
+import { applyTextureBackground } from './menu-texture.js';
 import { BlockSounds } from './sound.js';
+import { showToast } from './toast.js';
 import './style.css';
 
 const searchParameters = new URLSearchParams(window.location.search);
 const defaultSeed = searchParameters.get('seed')?.trim() || 'gm-0';
 const activeSaveId = searchParameters.get('save')?.trim() || defaultSeed;
-const activeSaveName = searchParameters.get('saveName')?.trim() || '默认存档';
+// 当前存档名:重命名/删除 active 存档后同步主界面显示,故用 let。
+let activeSaveName = searchParameters.get('saveName')?.trim() || '默认存档';
 const fixedWorld = searchParameters.get('world') === 'fixed';
 const metadata = createWorldMetadata(defaultSeed, '0.1.0');
 const app = document.querySelector<HTMLElement>('#app');
@@ -55,14 +66,25 @@ app.innerHTML = `
     <div class="menu-panel">
       <p class="eyebrow">GM · 单机世界</p>
       <h1>可扩展的方块世界</h1>
-      <p>种子：${metadata.seed}</p>
-      <p>当前存档：${activeSaveName}</p>
+      <label class="save-name-label" for="seed-input">种子（决定地形生成）</label>
+      <input id="seed-input" maxlength="64" value="${metadata.seed}" />
+      <p>当前存档：<strong id="active-save-name">${activeSaveName}</strong></p>
       <button id="start-game" type="button">进入世界</button>
       <label class="save-name-label" for="new-save-name">新存档名称</label>
       <input id="new-save-name" maxlength="32" placeholder="例如：山地建造" />
       <button id="create-save" class="secondary-button" type="button">创建新存档</button>
-      <div id="save-list" class="save-list" aria-label="当前种子的存档列表"></div>
+      <button id="manage-saves" class="secondary-button" type="button">管理存档</button>
       <p class="menu-note">进入后点击画面锁定鼠标，按 Esc 暂停。</p>
+    </div>
+  </section>
+  <section id="saves-menu" class="menu-layer is-hidden" aria-hidden="true">
+    <div class="menu-panel">
+      <p class="eyebrow">GM · 存档管理</p>
+      <h1>存档列表</h1>
+      <button id="back-to-main" type="button">返回主界面</button>
+      <button id="import-save" class="secondary-button" type="button">导入存档</button>
+      <input id="import-file" type="file" accept=".json,application/json" hidden />
+      <div id="saves-list" class="save-list" aria-label="当前种子的存档列表"></div>
     </div>
   </section>
   <section id="pause-menu" class="menu-layer is-hidden" aria-hidden="true">
@@ -84,30 +106,56 @@ if (canvas === null) {
 
 const mainMenu = document.querySelector<HTMLElement>('#main-menu');
 const pauseMenu = document.querySelector<HTMLElement>('#pause-menu');
+const savesMenu = document.querySelector<HTMLElement>('#saves-menu');
 const startGame = document.querySelector<HTMLButtonElement>('#start-game');
 const resumeGame = document.querySelector<HTMLButtonElement>('#resume-game');
 const returnMainMenu = document.querySelector<HTMLButtonElement>('#return-main-menu');
 const saveWorld = document.querySelector<HTMLButtonElement>('#save-world');
 const createSave = document.querySelector<HTMLButtonElement>('#create-save');
+const manageSaves = document.querySelector<HTMLButtonElement>('#manage-saves');
+const backToMain = document.querySelector<HTMLButtonElement>('#back-to-main');
+const importSave = document.querySelector<HTMLButtonElement>('#import-save');
+const importFile = document.querySelector<HTMLInputElement>('#import-file');
 const newSaveName = document.querySelector<HTMLInputElement>('#new-save-name');
-const saveList = document.querySelector<HTMLElement>('#save-list');
+const seedInput = document.querySelector<HTMLInputElement>('#seed-input');
+const savesList = document.querySelector<HTMLElement>('#saves-list');
+const activeSaveNameLabel = document.querySelector<HTMLElement>('#active-save-name');
 if (
   mainMenu === null ||
   pauseMenu === null ||
+  savesMenu === null ||
   startGame === null ||
   resumeGame === null ||
   returnMainMenu === null ||
   saveWorld === null ||
   createSave === null ||
+  manageSaves === null ||
+  backToMain === null ||
+  importSave === null ||
+  importFile === null ||
   newSaveName === null ||
-  saveList === null
+  seedInput === null ||
+  savesList === null ||
+  activeSaveNameLabel === null
 ) {
   throw new Error('找不到游戏菜单');
 }
 const gameCanvas = canvas;
 const gameMainMenu = mainMenu;
 const gamePauseMenu = pauseMenu;
-const saveListElement = saveList;
+const gameSavesMenu = savesMenu;
+const savesListElement = savesList;
+const seedInputElement = seedInput;
+const activeSaveNameLabelElement = activeSaveNameLabel;
+
+// 菜单贴图蒙版:主界面铺石头、存档界面铺泥土(暗色蒙层保证文字可读)。
+const mainMenuPanel = mainMenu.querySelector<HTMLElement>('.menu-panel');
+const savesMenuPanel = savesMenu.querySelector<HTMLElement>('.menu-panel');
+if (mainMenuPanel === null || savesMenuPanel === null) {
+  throw new Error('找不到菜单面板');
+}
+applyTextureBackground(mainMenuPanel, 'stone');
+applyTextureBackground(savesMenuPanel, 'dirt');
 
 let gameStarted = false;
 let paused = true;
@@ -122,6 +170,7 @@ function startOrResumeGame(): void {
   paused = false;
   setMenuVisibility(gameMainMenu, false);
   setMenuVisibility(gamePauseMenu, false);
+  setMenuVisibility(gameSavesMenu, false);
   clock.getDelta();
   // 用户手势内创建/唤醒音频上下文（浏览器自动播放策略要求）。
   sounds.unlock();
@@ -288,24 +337,224 @@ function scheduleSave(): void {
 
 void restoreWorld();
 
+function currentSeed(): string {
+  return seedInputElement.value.trim() || defaultSeed;
+}
+
+// 主界面"当前存档"文本与游戏内 HUD 同源:重命名/删除 active 存档后即时同步。
+function syncActiveSaveName(): void {
+  activeSaveNameLabelElement.textContent = activeSaveName;
+}
+
+// 跳转进入某存档:与创建存档同一套 URL 参数约定,整页刷新加载。
+function enterSave(id: string, name: string): void {
+  const next = new URLSearchParams({
+    seed: currentSeed(),
+    save: id,
+    saveName: name
+  });
+  window.location.search = next.toString();
+}
+
+// 存档列表:每行仅两个按钮——[进入]进世界、[管理]展开详情,行内附摘要。
 async function populateSaveList(): Promise<void> {
-  const saves = await storage.listWorlds(defaultSeed);
-  saveListElement.replaceChildren();
+  const saves = await storage.listWorlds(currentSeed());
+  savesListElement.replaceChildren();
+  if (saves.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'menu-note';
+    empty.textContent = '这个种子还没有存档：创建新存档，或导入 JSON 文件。';
+    savesListElement.append(empty);
+    return;
+  }
   for (const save of saves) {
+    const row = document.createElement('div');
+    row.className = 'save-row';
+    const info = document.createElement('div');
+    const name = document.createElement('span');
+    name.className = 'save-row-name';
+    name.textContent = save.name ?? '旧存档';
+    const meta = document.createElement('span');
+    meta.className = 'save-row-meta';
+    meta.textContent =
+      `修改 ${save.chunks.length} 区块 · 玩家 ` +
+      `(${Math.floor(save.player.x)}, ${Math.floor(save.player.y)}, ${Math.floor(save.player.z)}) · ` +
+      new Date(save.updatedAt).toLocaleString();
+    info.append(name, meta);
+    const buttons = document.createElement('div');
+    buttons.className = 'save-row-buttons';
+    const enterButton = document.createElement('button');
+    enterButton.type = 'button';
+    enterButton.textContent = '进入';
+    enterButton.addEventListener('click', () => enterSave(save.id, save.name ?? '旧存档'));
+    const manageButton = document.createElement('button');
+    manageButton.type = 'button';
+    manageButton.className = 'secondary-button';
+    manageButton.textContent = '管理';
+    manageButton.addEventListener('click', () => renderSaveDetail(save));
+    buttons.append(enterButton, manageButton);
+    row.append(info, buttons);
+    savesListElement.append(row);
+  }
+}
+
+// 存档详情:替代列表区显示完整信息,五个功能各一按钮,避免单屏按钮堆叠。
+function renderSaveDetail(save: StoredWorld): void {
+  savesListElement.replaceChildren();
+  const detail = document.createElement('dl');
+  detail.className = 'save-detail';
+  const rows: ReadonlyArray<readonly [string, string]> = [
+    ['名称', save.name ?? '旧存档'],
+    ['种子', save.metadata.seed],
+    ['修改区块', String(save.chunks.length)],
+    [
+      '玩家位置',
+      `(${save.player.x.toFixed(1)}, ${save.player.y.toFixed(1)}, ${save.player.z.toFixed(1)})`
+    ],
+    ['最后保存', new Date(save.updatedAt).toLocaleString()]
+  ];
+  for (const [label, value] of rows) {
+    const term = document.createElement('dt');
+    term.textContent = label;
+    const description = document.createElement('dd');
+    description.textContent = value;
+    detail.append(term, description);
+  }
+  savesListElement.append(detail);
+
+  const addActionButton = (text: string, className: string, onClick: () => void): void => {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'save-entry';
-    button.textContent = `${save.name ?? '旧存档'} · ${new Date(save.updatedAt).toLocaleString()}`;
-    button.addEventListener('click', () => {
-      const next = new URLSearchParams({
-        seed: defaultSeed,
-        save: save.id,
-        saveName: save.name ?? '旧存档'
-      });
-      window.location.search = next.toString();
-    });
-    saveListElement.append(button);
+    button.className = className;
+    button.textContent = text;
+    button.addEventListener('click', onClick);
+    savesListElement.append(button);
+  };
+
+  addActionButton('进入世界', '', () => enterSave(save.id, save.name ?? '旧存档'));
+  addActionButton('重命名存档', 'secondary-button', () => {
+    void renameSave(save);
+  });
+  addActionButton('导出存档', 'secondary-button', () => {
+    void exportSave(save);
+  });
+  addActionButton('删除存档', 'danger-button', () => {
+    void deleteSave(save);
+  });
+  addActionButton('返回列表', 'secondary-button', () => {
+    void populateSaveList();
+  });
+}
+
+async function renameSave(save: StoredWorld): Promise<void> {
+  const name = await showDialog({
+    title: '重命名存档',
+    input: { label: '新名称', maxLength: 32, value: save.name ?? '' },
+    confirmText: '重命名'
+  });
+  if (name === null) {
+    return;
   }
+  await storage.renameWorld(save.id, name);
+  if (save.id === activeSaveId) {
+    activeSaveName = name;
+    syncActiveSaveName();
+  }
+  showToast('已重命名存档');
+  const updated = await storage.loadWorld(save.id);
+  if (updated !== undefined) {
+    renderSaveDetail(updated);
+  }
+}
+
+async function deleteSave(save: StoredWorld): Promise<void> {
+  const answer = await showDialog({
+    title: '删除存档？',
+    message: `「${save.name ?? '旧存档'}」将被永久删除，无法恢复。`,
+    confirmText: '删除',
+    danger: true
+  });
+  if (answer === null) {
+    return;
+  }
+  await storage.deleteWorld(save.id);
+  if (save.id === activeSaveId) {
+    activeSaveName = '默认存档';
+    syncActiveSaveName();
+    showToast('已删除当前存档：再进入世界将创建新世界');
+  } else {
+    showToast('已删除存档');
+  }
+  await populateSaveList();
+}
+
+// 文件名消毒:去掉 Windows 文件系统不允许的字符。
+function sanitizeFileName(name: string | undefined): string {
+  const cleaned = (name ?? '存档').trim().replace(/[\\/:*?"<>|]/g, '_');
+  return cleaned.length === 0 ? '存档' : cleaned;
+}
+
+async function exportSave(save: StoredWorld): Promise<void> {
+  const world = await storage.loadWorld(save.id);
+  if (world === undefined) {
+    showToast('存档不存在，导出失败', 'error');
+    return;
+  }
+  const blob = new Blob([serializeWorld(world)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `${sanitizeFileName(save.name)}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  showToast('已导出存档文件');
+}
+
+// 导入 JSON 存档:错误按类提示;id 冲突先确认覆盖;种子不同则同步主界面种子输入。
+async function handleImport(json: string): Promise<void> {
+  let parsed: StoredWorld;
+  try {
+    parsed = parseWorldFile(json);
+  } catch (error) {
+    if (error instanceof SaveFormatError) {
+      if (error.reason === 'invalid-json') {
+        showToast('文件不是有效的 JSON 存档', 'error');
+      } else if (error.reason === 'too-new') {
+        showToast('存档来自更新版本的游戏，无法导入', 'error');
+      } else {
+        showToast('存档文件已损坏，无法导入', 'error');
+      }
+    } else {
+      showToast('导入失败', 'error');
+    }
+    return;
+  }
+  // 已存在同 id 存档时确认覆盖(损坏记录被导入覆盖也算修复,故读失败视为不存在)。
+  let existing: StoredWorld | undefined;
+  try {
+    existing = await storage.loadWorld(parsed.id);
+  } catch {
+    existing = undefined;
+  }
+  if (existing !== undefined) {
+    const answer = await showDialog({
+      title: '覆盖已有存档？',
+      message: `已存在存档「${existing.name ?? '旧存档'}」，导入将覆盖它。`,
+      confirmText: '覆盖导入',
+      danger: true
+    });
+    if (answer === null) {
+      return;
+    }
+  }
+  await storage.saveWorld(parsed);
+  if (parsed.metadata.seed !== currentSeed()) {
+    seedInputElement.value = parsed.metadata.seed;
+    showToast(`已导入，种子已同步为「${parsed.metadata.seed}」`);
+  } else {
+    showToast(`已导入存档「${parsed.name ?? '旧存档'}」`);
+  }
+  await populateSaveList();
 }
 
 createSave.addEventListener('click', () => {
@@ -315,7 +564,7 @@ createSave.addEventListener('click', () => {
     return;
   }
   const next = new URLSearchParams({
-    seed: defaultSeed,
+    seed: currentSeed(),
     save: crypto.randomUUID(),
     saveName: name
   });
@@ -323,6 +572,35 @@ createSave.addEventListener('click', () => {
 });
 saveWorld.addEventListener('click', () => {
   void saveCurrentWorld();
+});
+manageSaves.addEventListener('click', () => {
+  setMenuVisibility(gameMainMenu, false);
+  setMenuVisibility(gameSavesMenu, true);
+  void populateSaveList();
+});
+backToMain.addEventListener('click', () => {
+  setMenuVisibility(gameSavesMenu, false);
+  setMenuVisibility(gameMainMenu, true);
+});
+importSave.addEventListener('click', () => {
+  importFile.click();
+});
+importFile.addEventListener('change', () => {
+  const file = importFile.files?.[0];
+  importFile.value = '';
+  if (file === undefined) {
+    return;
+  }
+  const reader = new FileReader();
+  reader.addEventListener('load', () => {
+    if (typeof reader.result === 'string') {
+      void handleImport(reader.result);
+    }
+  });
+  reader.addEventListener('error', () => {
+    showToast('读取文件失败', 'error');
+  });
+  reader.readAsText(file);
 });
 void populateSaveList();
 

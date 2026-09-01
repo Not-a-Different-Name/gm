@@ -134,6 +134,15 @@ h1 {
   background: #3e5846;
 }
 
+.menu-panel .danger-button {
+  border-color: #e08a72;
+  background: #a34a3a;
+}
+
+.menu-panel .danger-button:hover {
+  background: #c45642;
+}
+
 .menu-note {
   margin: 1.4rem 0 0;
   color: #d4e7bb;
@@ -366,8 +375,10 @@ h1 {
 }
 
 .save-row-buttons button {
+  display: block;
+  width: 4.5rem;
   margin-top: 0;
-  padding: 0.45rem 0.8rem;
+  padding: 0.45rem 0.6rem;
   font-size: 0.8rem;
   white-space: nowrap;
 }
