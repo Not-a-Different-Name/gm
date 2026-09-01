@@ -67,8 +67,18 @@ export class Chunk {
     }
   }
 
-  public clearChanges(): void {
-    this.changes.clear();
+  // 清空修改记录。带快照时按"值与快照一致才删除"逐条比对：
+  // 保存期间同格被再次编辑（当前值已不同于快照）的新修改会保留，不随保存丢失。
+  public clearChanges(snapshot?: readonly ChunkBlockChange[]): void {
+    if (snapshot === undefined) {
+      this.changes.clear();
+      return;
+    }
+    for (const change of snapshot) {
+      if (this.changes.get(change.index) === change.blockId) {
+        this.changes.delete(change.index);
+      }
+    }
   }
 
   private getIndex(localX: number, y: number, localZ: number): number {
