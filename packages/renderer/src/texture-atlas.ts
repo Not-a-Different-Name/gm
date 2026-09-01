@@ -1,7 +1,9 @@
+import { TEXTURE_VARIANT_COUNT } from '@gm/core';
 import * as THREE from 'three';
 
 const TILE_SIZE = 16;
-export const TEXTURE_VARIANT_COUNT = 4;
+// 变体数量统一由 core 的贪心网格模块提供（单一事实来源），这里保持再导出兼容。
+export { TEXTURE_VARIANT_COUNT };
 const TEXTURE_IDS = [
   'grass-top',
   'grass-side',

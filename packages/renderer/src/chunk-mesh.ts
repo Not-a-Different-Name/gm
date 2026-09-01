@@ -1,8 +1,16 @@
-import { BLOCK_DEFINITIONS, BlockId, isOpaqueBlock, waterSurfaceHeight } from '@gm/core';
-import type { Chunk } from '@gm/core';
+import {
+  BlockId,
+  CHUNK_SIZE,
+  WORLD_HEIGHT,
+  generateGreedyMesh,
+  waterSurfaceHeight
+} from '@gm/core';
+import type { Chunk, GreedyRect } from '@gm/core';
 import * as THREE from 'three';
 
-import { getTextureAtlas, TEXTURE_VARIANT_COUNT, type TextureRegion } from './texture-atlas.js';
+import { buildChunkMeshGeometry } from './chunk-mesh-geometry.js';
+import { getSolidMaterial } from './solid-material.js';
+import { getTextureAtlas } from './texture-atlas.js';
 import { getWaterMaterial } from './water-material.js';
 
 interface Face {
@@ -88,53 +96,6 @@ export interface WaterLevelLookup extends BlockLookup {
   getWaterLevel(x: number, y: number, z: number): number;
 }
 
-function getTextureVariant(x: number, y: number, z: number, faceIndex: number): number {
-  const hash =
-    Math.imul(x, 73_856_093) ^
-    Math.imul(y, 19_349_663) ^
-    Math.imul(z, 83_492_791) ^
-    Math.imul(faceIndex, 2_654_435_761);
-  return (hash >>> 0) % TEXTURE_VARIANT_COUNT;
-}
-
-function addFace(
-  positions: number[],
-  colors: number[],
-  uvs: number[],
-  blockX: number,
-  blockY: number,
-  blockZ: number,
-  face: Face,
-  color: THREE.Color,
-  region: TextureRegion
-): void {
-  const corners = [
-    face.vertices[0],
-    face.vertices[1],
-    face.vertices[2],
-    face.vertices[0],
-    face.vertices[2],
-    face.vertices[3]
-  ];
-  const shadedColor = color.clone().multiplyScalar(face.shade);
-
-  const faceUvs = [
-    [region.u0, region.v0],
-    [region.u0, region.v1],
-    [region.u1, region.v1],
-    [region.u0, region.v0],
-    [region.u1, region.v1],
-    [region.u1, region.v0]
-  ];
-  for (let index = 0; index < corners.length; index += 1) {
-    const corner = corners[index]!;
-    const uv = faceUvs[index]!;
-    positions.push(blockX + corner[0], blockY + corner[1], blockZ + corner[2]);
-    colors.push(shadedColor.r, shadedColor.g, shadedColor.b);
-    uvs.push(uv[0]!, uv[1]!);
-  }
-}
-
 // 水面 UV 直接取世界坐标（每个世界单位对应一次平铺），
 // 让波纹纹理跨方块无缝连续，配合 RepeatWrapping 与逐帧偏移滚动形成流动感。
 // 顶点高度：位于方块顶面的顶点（corner[1] === 1）压到 surfaceHeight（顶层水按水位分级低于岸边）；
@@ -182,69 +143,45 @@ export function createChunkMesh(
   chunk: Chunk,
   lookup: BlockLookup
 ): THREE.Mesh<THREE.BufferGeometry, THREE.MeshLambertMaterial> {
-  const positions: number[] = [];
-  const colors: number[] = [];
-  const uvs: number[] = [];
-  const atlas = getTextureAtlas();
-  const chunkOriginX = chunk.x * 16;
-  const chunkOriginZ = chunk.z * 16;
-
-  for (let y = 0; y < 256; y += 1) {
-    for (let z = 0; z < 16; z += 1) {
-      for (let x = 0; x < 16; x += 1) {
-        const blockId = chunk.getBlock(x, y, z);
-        if (blockId === BlockId.Air || blockId === BlockId.Water) {
-          continue;
-        }
-
-        const color = new THREE.Color(0xffffff);
-        for (const [faceIndex, face] of FACES.entries()) {
-          const neighbor = lookup.getBlock(
-            chunkOriginX + x + face.normal[0],
-            y + face.normal[1],
-            chunkOriginZ + z + face.normal[2]
-          );
-          if (!isOpaqueBlock(neighbor)) {
-            const textures = BLOCK_DEFINITIONS[blockId].textures;
-            const textureId =
-              face.normal[1] > 0
-                ? textures.top
-                : face.normal[1] < 0
-                  ? textures.bottom
-                  : textures.side;
-            addFace(
-              positions,
-              colors,
-              uvs,
-              chunkOriginX + x,
-              y,
-              chunkOriginZ + z,
-              face,
-              color,
-              atlas.getRegion(
-                textureId,
-                getTextureVariant(chunkOriginX + x, y, chunkOriginZ + z, faceIndex)
-              )
-            );
-          }
-        }
-      }
+  const chunkOriginX = chunk.x * CHUNK_SIZE;
+  const chunkOriginZ = chunk.z * CHUNK_SIZE;
+  // 本地坐标查询：区块内直接读 chunk，越界转发给世界查询（可能顺带生成邻居数据），
+  // 与旧逐面构建的邻居查询语义一致。
+  const getLocalBlock = (x: number, y: number, z: number): BlockId => {
+    if (x >= 0 && x < CHUNK_SIZE && y >= 0 && y < WORLD_HEIGHT && z >= 0 && z < CHUNK_SIZE) {
+      return chunk.getBlock(x, y, z);
     }
+    return lookup.getBlock(chunkOriginX + x, y, chunkOriginZ + z);
+  };
+
+  // 六个方向分别做贪心扫描，把同方向同方块的共面区域合并成矩形
+  // （产面与剔除语义和旧逐面构建一致，见 core 的 generateGreedyMesh）。
+  const rects: GreedyRect[] = [];
+  for (let directionIndex = 0; directionIndex < 6; directionIndex += 1) {
+    rects.push(
+      ...generateGreedyMesh({
+        size: [CHUNK_SIZE, WORLD_HEIGHT, CHUNK_SIZE],
+        directionIndex,
+        getBlock: getLocalBlock
+      })
+    );
   }
 
+  const atlas = getTextureAtlas();
+  const data = buildChunkMeshGeometry(rects, (textureId, variant) =>
+    atlas.getRegion(textureId, variant)
+  );
+
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(data.colors, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(data.uvs, 2));
+  // 自定义属性：着色器注入按 region 做逐块平铺。
+  geometry.setAttribute('aRegion', new THREE.Float32BufferAttribute(data.regions, 4));
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
 
-  const material = new THREE.MeshLambertMaterial({
-    vertexColors: true,
-    map: atlas.texture,
-    alphaTest: 0.5
-  });
-  return new THREE.Mesh(geometry, material);
+  return new THREE.Mesh(geometry, getSolidMaterial());
 }
 
 export function createWaterMesh(

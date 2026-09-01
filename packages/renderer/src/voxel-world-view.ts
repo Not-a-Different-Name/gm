@@ -279,12 +279,11 @@ export class VoxelWorldView implements BlockLookup {
     }
   }
 
-  // 释放实心地形网格：几何体与其独占材质都可销毁。
+  // 释放实心地形网格：只销毁几何体，实心材质与水面材质一样在所有区块间共享。
   private disposeSolid(object: THREE.Object3D): void {
     this.group.remove(object);
     if (object instanceof THREE.Mesh) {
       object.geometry.dispose();
-      object.material.dispose();
     }
   }
 

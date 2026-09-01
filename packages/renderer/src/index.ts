@@ -1,4 +1,5 @@
 export * from './block-particles.js';
+export * from './chunk-mesh-geometry.js';
 export * from './chunk-mesh.js';
 export * from './clouds.js';
 export * from './drop-items.js';
