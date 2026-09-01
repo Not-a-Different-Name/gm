@@ -1,5 +1,7 @@
 import type { ChunkBlockChange, InventoryEntry, ModFingerprint, WorldMetadata } from '@gm/core';
 
+import { migrateWorldData } from './world-format.js';
+
 export interface StoredChunkDelta {
   readonly x: number;
   readonly z: number;
@@ -32,9 +34,32 @@ export class WorldStorage {
 
   public async loadWorld(id: string): Promise<StoredWorld | undefined> {
     const database = await this.getDatabase();
-    return this.runRequest<StoredWorld | undefined>(
+    const world = await this.runRequest<unknown>(
       database.transaction(STORE_NAME, 'readonly').objectStore(STORE_NAME).get(id)
     );
+    // 读到的数据逐字段校验并迁移到当前格式版本:损坏/版本过高抛 SaveFormatError,
+    // 不存在的存档保持 undefined 语义。
+    return world === undefined ? undefined : migrateWorldData(world);
+  }
+
+  public async deleteWorld(id: string): Promise<void> {
+    const database = await this.getDatabase();
+    // 幂等:删除不存在的存档静默返回(调用方通常从列表触发)。
+    await this.runRequest(
+      database.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).delete(id)
+    );
+  }
+
+  public async renameWorld(id: string, name: string): Promise<void> {
+    const database = await this.getDatabase();
+    const store = database.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME);
+    const world = await this.runRequest<unknown>(store.get(id));
+    if (world === undefined) {
+      return;
+    }
+    // 仅改名称,不刷新 updatedAt(避免列表顺序跳动);损坏数据在此同样报错。
+    const valid = migrateWorldData(world);
+    await this.runRequest(store.put({ ...valid, name }));
   }
 
   public async saveWorld(world: StoredWorld): Promise<void> {

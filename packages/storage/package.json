@@ -15,6 +15,7 @@
     "@gm/core": "workspace:*"
   },
   "devDependencies": {
+    "fake-indexeddb": "^6.2.5",
     "vitest": "^3.1.1"
   }
 }
