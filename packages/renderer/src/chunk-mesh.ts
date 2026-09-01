@@ -181,7 +181,11 @@ export function createChunkMesh(
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
 
-  return new THREE.Mesh(geometry, getSolidMaterial());
+  // 顶点是区块本地坐标：把网格平移到区块世界原点（旧逐面构建直接烘焙世界坐标，
+  // 水面网格沿用烘焙做法，无需平移）。
+  const mesh = new THREE.Mesh(geometry, getSolidMaterial());
+  mesh.position.set(chunkOriginX, 0, chunkOriginZ);
+  return mesh;
 }
 
 export function createWaterMesh(
