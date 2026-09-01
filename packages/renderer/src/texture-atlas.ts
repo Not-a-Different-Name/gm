@@ -64,14 +64,16 @@ function mulberry32(seed: number): () => number {
 
 export class TextureAtlas {
   public readonly texture: THREE.CanvasTexture;
+  // 图集源画布：copyTile 从中按像素区抠出单个方块图标（热键栏、掉落物用）。
+  private readonly canvas: HTMLCanvasElement;
   private readonly regions = new Map<string, TextureRegion>();
 
   public constructor() {
-    const canvas = document.createElement('canvas');
+    this.canvas = document.createElement('canvas');
     const tileCount = TEXTURE_IDS.length * TEXTURE_VARIANT_COUNT;
-    canvas.width = TILE_SIZE * tileCount;
-    canvas.height = TILE_SIZE;
-    const context = canvas.getContext('2d');
+    this.canvas.width = TILE_SIZE * tileCount;
+    this.canvas.height = TILE_SIZE;
+    const context = this.canvas.getContext('2d');
     if (context === null) throw new Error('无法创建像素纹理画布');
     TEXTURE_IDS.forEach((id, textureIndex) => {
       for (let variant = 0; variant < TEXTURE_VARIANT_COUNT; variant += 1) {
@@ -85,7 +87,7 @@ export class TextureAtlas {
         });
       }
     });
-    this.texture = new THREE.CanvasTexture(canvas);
+    this.texture = new THREE.CanvasTexture(this.canvas);
     this.texture.magFilter = THREE.NearestFilter;
     this.texture.minFilter = THREE.NearestFilter;
     this.texture.colorSpace = THREE.SRGBColorSpace;
@@ -95,6 +97,30 @@ export class TextureAtlas {
     const normalizedVariant =
       ((variant % TEXTURE_VARIANT_COUNT) + TEXTURE_VARIANT_COUNT) % TEXTURE_VARIANT_COUNT;
     return this.regions.get(`${id}:${normalizedVariant}`) ?? this.regions.get('stone:0')!;
+  }
+
+  /** 把某个方块纹理抠成独立画布（整数倍放大、关闭平滑），供热键栏图标与掉落物贴图使用。 */
+  public copyTile(id: string, variant = 0, scale = 2): HTMLCanvasElement {
+    const region = this.getRegion(id, variant);
+    const sourceX = Math.round(region.u0 * this.canvas.width);
+    const canvas = document.createElement('canvas');
+    canvas.width = TILE_SIZE * scale;
+    canvas.height = TILE_SIZE * scale;
+    const context = canvas.getContext('2d');
+    if (context === null) throw new Error('无法创建方块图标画布');
+    context.imageSmoothingEnabled = false;
+    context.drawImage(
+      this.canvas,
+      sourceX,
+      0,
+      TILE_SIZE,
+      TILE_SIZE,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+    return canvas;
   }
 
   // ---- 绘制基元 --------------------------------------------------------
