@@ -1,5 +1,12 @@
 import { BLOCK_DEFINITIONS, BlockId, FixedWorldBoundary, createWorldMetadata } from '@gm/core';
-import { BlockParticles, PlayerController, Sky, VoxelWorldView } from '@gm/renderer';
+import {
+  BlockParticles,
+  PlayerController,
+  Sky,
+  VoxelWorldView,
+  WaterFlowController,
+  updateWaterMaterial
+} from '@gm/renderer';
 import { WorldStorage, createStoredWorld } from '@gm/storage';
 import * as THREE from 'three';
 
@@ -27,7 +34,7 @@ app.innerHTML = `
     <p>区块：<strong>3 × 3</strong> · ${fixedWorld ? '固定地图' : '无限地图预览'} · 昼夜天空已启用</p>
     <p>视角：<strong id="camera-mode">第一人称</strong> · 飞行：<strong id="flight-state">关闭</strong></p>
     <p>当前方块：<strong id="selected-block">草方块</strong></p>
-    <p class="hint">点击画面锁定鼠标 · 左键破坏 · 右键放置 · 1-5 选方块 · WASD 移动 · 空格跳跃 · F 飞行 · V 切换视角</p>
+    <p class="hint">点击画面锁定鼠标 · 左键破坏 · 右键放置 · 1-6 选方块（6 水会蔓延） · WASD 移动 · 空格跳跃 · F 飞行 · V 切换视角</p>
   </aside>
   <section id="main-menu" class="menu-layer">
     <div class="menu-panel">
@@ -147,6 +154,9 @@ const world = new VoxelWorldView({
 });
 scene.add(world.object3d);
 
+// 水流蔓延调度器：放水后逐帧向四周扩散，蔓延水不写入存档。
+const waterFlow = new WaterFlowController(world);
+
 const camera = new THREE.PerspectiveCamera(64, 1, 0.1, 500);
 const cameraMode = document.querySelector<HTMLElement>('#camera-mode');
 const flightState = document.querySelector<HTMLElement>('#flight-state');
@@ -175,7 +185,11 @@ async function restoreWorld(): Promise<void> {
   if (savedWorld === undefined) {
     return;
   }
-  world.applyChunkDeltas(savedWorld.chunks);
+  const restoredWaterSources = world.applyChunkDeltas(savedWorld.chunks);
+  // 读档后唤醒水源重新蔓延：蔓延水不存档，池形由存档里的水源重新爬出。
+  for (const source of restoredWaterSources) {
+    waterFlow.markDirty(source.x, source.y, source.z);
+  }
   player.setPosition(
     new THREE.Vector3(savedWorld.player.x, savedWorld.player.y, savedWorld.player.z)
   );
@@ -254,7 +268,8 @@ const selectableBlocks = [
   BlockId.Dirt,
   BlockId.Stone,
   BlockId.Sand,
-  BlockId.Wood
+  BlockId.Wood,
+  BlockId.Water
 ] as const;
 let selectedBlock = BlockId.Grass;
 const particles = new BlockParticles();
@@ -382,6 +397,8 @@ function updateBreaking(deltaSeconds: number): void {
   if (ratio >= 1) {
     if (world.setBlock(position.x, position.y, position.z, BlockId.Air)) {
       particles.spawn(position.clone().addScalar(0.5), BLOCK_DEFINITIONS[block].color);
+      // 破坏后通知水系统重新评估：挖开海底/岸边会让相邻水向缺口流动，破坏水源会退水。
+      waterFlow.markDirty(position.x, position.y, position.z);
       scheduleSave();
     }
     resetBreaking();
@@ -444,6 +461,13 @@ canvas.addEventListener('mousedown', (event) => {
     }
     const blockPosition = toBlockPosition(target, 1);
     if (world.setBlock(blockPosition.x, blockPosition.y, blockPosition.z, selectedBlock)) {
+      // 放置的水源本身写入存档；由它向四周蔓延出的水仅存在于运行时（不存档）。
+      if (selectedBlock === BlockId.Water) {
+        waterFlow.addSource(blockPosition.x, blockPosition.y, blockPosition.z);
+      } else {
+        // 放置实体方块可能挡住/改变水路，通知水系统重新评估邻域。
+        waterFlow.markDirty(blockPosition.x, blockPosition.y, blockPosition.z);
+      }
       scheduleSave();
     }
   }
@@ -480,6 +504,7 @@ function render(): void {
     player.update(deltaSeconds);
     world.update(player.position.x, player.position.z);
     particles.update(deltaSeconds);
+    waterFlow.update(deltaSeconds);
     updateSelection();
     updateBreaking(deltaSeconds);
   }
@@ -488,6 +513,8 @@ function render(): void {
   sky.getHorizonColor(horizonColor);
   scene.fog?.color.copy(horizonColor);
   renderer.setClearColor(horizonColor);
+  // 水面波纹随时间滚动，暂停时也缓慢流动。
+  updateWaterMaterial(clock.elapsedTime);
   renderer.render(scene, camera);
   window.requestAnimationFrame(render);
 }

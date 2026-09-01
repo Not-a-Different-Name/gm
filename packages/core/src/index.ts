@@ -3,5 +3,6 @@ export * from './chunk.js';
 export * from './chunk-coordinate.js';
 export * from './seeded-random.js';
 export * from './terrain-generator.js';
+export * from './water-flow.js';
 export * from './world-boundary.js';
 export * from './world-metadata.js';

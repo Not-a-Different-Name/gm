@@ -69,7 +69,8 @@ const domeFragmentShader = /* glsl */ `
   }
 `;
 
-// 生成日月的像素贴图，延续游戏的手绘像素风。返回带透明背景的方形贴图。
+// 生成日月的像素贴图，延续游戏的手绘方块像素风。
+// 填满整张方形画布（四角不透明），呈现方块状的日月，而非圆盘。
 function createBodyTexture(kind: 'sun' | 'moon'): THREE.CanvasTexture {
   const size = 32;
   const canvas = document.createElement('canvas');
@@ -88,13 +89,10 @@ function createBodyTexture(kind: 'sun' | 'moon'): THREE.CanvasTexture {
 
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
-      const distance = Math.hypot(x - center, y - center);
-      if (distance > radius) {
-        continue; // 圆外透明
-      }
-      const t = distance / radius;
+      // 用切比雪夫距离取同心方环，使明暗过渡为方形而非圆形，四角填满。
+      const t = Math.min(Math.max(Math.abs(x - center), Math.abs(y - center)) / radius, 1);
       const shade = core.clone().lerp(edge, t * t);
-      // 轻微像素抖动，避免同心圆过于均匀。
+      // 轻微像素抖动，避免方块过于均匀。
       const jitter = (((x * 7 + y * 13) % 5) - 2) * 0.012;
       shade.offsetHSL(0, 0, jitter);
       context.fillStyle = `#${shade.getHexString()}`;
@@ -103,7 +101,7 @@ function createBodyTexture(kind: 'sun' | 'moon'): THREE.CanvasTexture {
   }
 
   if (kind === 'moon') {
-    // 几处更深的环形山，打破圆盘的规整。
+    // 几处更深的环形山，打破月面的规整。
     const craters: readonly [number, number, number][] = [
       [12, 11, 2],
       [20, 18, 3],
@@ -134,11 +132,10 @@ function createStars(): THREE.Points<THREE.BufferGeometry, THREE.PointsMaterial>
   const positions = new Float32Array(STAR_COUNT * 3);
   const phases = new Float32Array(STAR_COUNT);
   for (let index = 0; index < STAR_COUNT; index += 1) {
-    // 仅在上半天球撒点，且略偏高，避免星星陷进地平线。
-    const u = Math.random();
-    const v = Math.random() * 0.5 + 0.5; // cosθ ∈ [0.5,1]? 用于偏上分布
-    const theta = u * Math.PI * 2;
-    const cosPhi = v;
+    // 在整个天球上均匀撒点（漫天星辰），仅剔除极低处以免陷进地平线以下。
+    const theta = Math.random() * Math.PI * 2;
+    // cosθ ∈ [-0.15, 1]：覆盖天顶到接近地平线的四周，只留很窄的地平线下裙边。
+    const cosPhi = Math.random() * 1.15 - 0.15;
     const sinPhi = Math.sqrt(1 - cosPhi * cosPhi);
     positions[index * 3] = STAR_RADIUS * sinPhi * Math.cos(theta);
     positions[index * 3 + 1] = STAR_RADIUS * cosPhi;
