@@ -279,7 +279,9 @@ export function createWaterMesh(
             y + face.normal[1],
             worldZ + face.normal[2]
           );
-          if (neighbor === BlockId.Air || (neighbor !== BlockId.Water && isOpaqueBlock(neighbor))) {
+          // 水体作为整体只渲染与空气接触的外表面：与实体方块相邻的侧/底面全部剔除，
+          // 水下地形与岸壁直接可见，不被半透明蓝色水膜覆盖（也不会在海底落差处形成整堵水墙）。
+          if (neighbor === BlockId.Air) {
             addWaterFace(
               positions,
               colors,

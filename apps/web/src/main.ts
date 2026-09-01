@@ -374,7 +374,8 @@ interface TargetBlock {
   readonly blockId: BlockId;
 }
 
-// 体素 DDA 遍历：沿相机视线逐格推进，返回第一个非空气方块所在格与命中面法线。
+// 体素 DDA 遍历：沿相机视线逐格推进，返回第一个实体方块所在格与命中面法线。
+// 水与空气同属性：不阻挡射线（穿透后命中水后的实体方块），保证放置/破坏都对准实体方块。
 // 替代每帧对全部区块网格做三角形射线检测（后者随网格复杂度持续消耗 CPU，是卡顿主因之一）。
 // 只访问已渲染区块，避免 getBlock 顺带生成未加载区块。
 function getTargetBlock(): TargetBlock | undefined {
@@ -432,7 +433,7 @@ function getTargetBlock(): TargetBlock | undefined {
       return undefined;
     }
     const blockId = world.getBlock(x, y, z);
-    if (blockId === BlockId.Air) {
+    if (blockId === BlockId.Air || blockId === BlockId.Water) {
       continue;
     }
     return {
@@ -630,10 +631,13 @@ function render(): void {
     updateBreaking(deltaSeconds);
   }
   // 天空持续推进（即使暂停也缓慢流动），并让雾与清屏色跟随地平线，使远景与天空融合。
-  sky.update(paused ? deltaSeconds * 0.15 : deltaSeconds, camera.position);
+  const sceneDelta = paused ? deltaSeconds * 0.15 : deltaSeconds;
+  sky.update(sceneDelta, camera.position);
   sky.getHorizonColor(horizonColor);
-  scene.fog?.color.copy(horizonColor);
-  renderer.setClearColor(horizonColor);
+  // 云层跟随相机并持续西向漂移（暂停时也缓慢流动，与天空一致）。
+  clouds.update(clock.elapsedTime, camera.position);
+  // 常规时雾与清屏色跟随天空地平线色；没入水面后过渡为深蓝近雾（见 updateUnderwaterEffect）。
+  updateUnderwaterEffect(sceneDelta);
   // 水面波纹随时间滚动，暂停时也缓慢流动。
   updateWaterMaterial(clock.elapsedTime);
   renderer.render(scene, camera);
