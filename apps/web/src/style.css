@@ -139,3 +139,64 @@ h1 {
   color: #d4e7bb;
   font-size: 0.86rem;
 }
+
+/* 底部热键栏：与 HUD 同语汇的像素风面板。 */
+.hotbar {
+  position: fixed;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border: 3px solid rgb(53 91 48 / 85%);
+  background: rgb(16 35 25 / 78%);
+  box-shadow: 5px 5px 0 rgb(12 20 14 / 55%);
+  backdrop-filter: blur(4px);
+}
+
+.hotbar.is-hidden {
+  display: none;
+}
+
+.hotbar-slot {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  padding: 3px;
+  border: 2px solid #3a5540;
+  background: rgb(6 16 10 / 62%);
+  cursor: pointer;
+}
+
+.hotbar-slot canvas {
+  display: block;
+  width: 32px;
+  height: 32px;
+  image-rendering: pixelated;
+}
+
+.hotbar-slot.is-selected {
+  border-color: #d6f2a8;
+  background: rgb(93 135 63 / 55%);
+}
+
+.hotbar-count {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  text-shadow: 1px 1px 0 rgb(0 0 0 / 85%);
+  pointer-events: none;
+}
+
+.hotbar-key {
+  position: absolute;
+  left: 3px;
+  top: 1px;
+  color: rgb(212 231 187 / 72%);
+  font-size: 10px;
+  pointer-events: none;
+}

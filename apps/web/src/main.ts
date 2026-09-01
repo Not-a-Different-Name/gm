@@ -2,12 +2,14 @@ import {
   BLOCK_DEFINITIONS,
   BlockId,
   FixedWorldBoundary,
+  Inventory,
   createWorldMetadata,
   waterSurfaceHeight
 } from '@gm/core';
 import {
   BlockParticles,
   Clouds,
+  DropItems,
   PlayerController,
   Sky,
   VoxelWorldView,
@@ -17,6 +19,8 @@ import {
 import { WorldStorage, createStoredWorld } from '@gm/storage';
 import * as THREE from 'three';
 
+import { Hotbar } from './hotbar.js';
+import { BlockSounds } from './sound.js';
 import './style.css';
 
 const searchParameters = new URLSearchParams(window.location.search);
@@ -41,7 +45,7 @@ app.innerHTML = `
     <p>区块：<strong>3 × 3</strong> · ${fixedWorld ? '固定地图' : '无限地图预览'} · 昼夜天空已启用</p>
     <p>视角：<strong id="camera-mode">第一人称</strong> · 飞行：<strong id="flight-state">关闭</strong></p>
     <p>当前方块：<strong id="selected-block">草方块</strong></p>
-    <p class="hint">点击画面锁定鼠标 · 左键破坏 · 右键放置 · 1-6 选方块（6 水会蔓延） · WASD 移动 · 空格跳跃 · F 飞行 · V 切换视角</p>
+    <p class="hint">点击画面锁定鼠标 · 左键破坏拾取 · 右键放置（消耗 1 个）· 1-6/滚轮选方块（水 ∞）· WASD 移动 · 空格跳跃 · F 飞行 · V 切换视角</p>
   </aside>
   <section id="main-menu" class="menu-layer">
     <div class="menu-panel">
@@ -115,6 +119,8 @@ function startOrResumeGame(): void {
   setMenuVisibility(gameMainMenu, false);
   setMenuVisibility(gamePauseMenu, false);
   clock.getDelta();
+  // 用户手势内创建/唤醒音频上下文（浏览器自动播放策略要求）。
+  sounds.unlock();
   void gameCanvas.requestPointerLock();
 }
 
@@ -123,6 +129,10 @@ function pauseGame(): void {
     return;
   }
   paused = true;
+  // 暂停时中断长按破坏：否则 Esc 暂停后 breakingHeld 残留，恢复后仍持续破坏。
+  breakingHeld = false;
+  resetBreaking();
+  sounds.stopBreaking();
   selection.visible = false;
   setMenuVisibility(gamePauseMenu, true);
 }
@@ -240,6 +250,9 @@ async function restoreWorld(): Promise<void> {
   player.setPosition(
     new THREE.Vector3(savedWorld.player.x, savedWorld.player.y, savedWorld.player.z)
   );
+  // 恢复物品栏（旧存档没有 inventory 字段时得到空物品栏），并刷新热键栏数量。
+  inventory = Inventory.fromEntries(savedWorld.player.inventory);
+  hotbar.refreshCounts(inventory);
 }
 
 async function saveCurrentWorld(): Promise<void> {
@@ -249,6 +262,7 @@ async function saveCurrentWorld(): Promise<void> {
       activeSaveName,
       metadata,
       player.position,
+      inventory.toEntries(),
       world.getModifiedChunks()
     )
   );
@@ -319,6 +333,31 @@ const selectableBlocks = [
   BlockId.Water
 ] as const;
 let selectedBlock = BlockId.Grass;
+
+// 物品栏：掉落+拾取+消耗（水不计入、恒可放置）。let 以便读档时整体替换。
+let inventory = new Inventory();
+
+// 程序化破坏/放置音效：AudioContext 由开始按钮与画布点击两个手势点解锁。
+const sounds = new BlockSounds();
+
+// 底部热键栏：点击/数字键/滚轮选中；onSelect 同步当前放置方块与 HUD 标签。
+const hotbar = new Hotbar(selectableBlocks, inventory, (index) => {
+  const nextBlock = selectableBlocks[index];
+  if (nextBlock === undefined) {
+    return;
+  }
+  selectedBlock = nextBlock;
+  selectedBlockLabel.textContent = BLOCK_DEFINITIONS[selectedBlock].name.replace('gm:', '');
+});
+app.append(hotbar.element);
+
+// 方块掉落物：破坏时弹出、走近自动拾取入物品栏；只存在于运行时，不存档。
+const drops = new DropItems(world, (blockId) => {
+  inventory.add(blockId);
+  hotbar.refreshCounts(inventory);
+});
+scene.add(drops.object3d);
+
 const particles = new BlockParticles();
 scene.add(particles.object3d);
 
@@ -478,16 +517,18 @@ function updateBreaking(deltaSeconds: number): void {
   const target = getTargetBlock();
   if (target === undefined) {
     resetBreaking();
+    sounds.stopBreaking();
     return;
   }
   const position = toBlockPosition(target, -1);
   const block = world.getBlock(position.x, position.y, position.z);
   if (block === BlockId.Air) {
     resetBreaking();
+    sounds.stopBreaking();
     return;
   }
 
-  // 换目标则重新计时。
+  // 换目标则重新计时，并按新方块的硬度重启破坏轻击音。
   if (
     breakProgress === undefined ||
     breakProgress.x !== position.x ||
@@ -495,6 +536,7 @@ function updateBreaking(deltaSeconds: number): void {
     breakProgress.z !== position.z
   ) {
     breakProgress = { x: position.x, y: position.y, z: position.z, elapsed: 0, chipTimer: 0 };
+    sounds.startBreaking(BLOCK_DEFINITIONS[block].hardness);
   }
 
   breakProgress.elapsed += deltaSeconds;
@@ -514,6 +556,12 @@ function updateBreaking(deltaSeconds: number): void {
 
   if (ratio >= 1) {
     if (world.setBlock(position.x, position.y, position.z, BlockId.Air)) {
+      sounds.stopBreaking();
+      sounds.playBreak(BLOCK_DEFINITIONS[block].hardness);
+      // 掉落物+入包：破坏的方块弹出掉落物，走近自动拾取计入物品栏。
+      drops.spawn(position.clone().addScalar(0.5), block);
+      inventory.add(block);
+      hotbar.refreshCounts(inventory);
       particles.spawn(position.clone().addScalar(0.5), BLOCK_DEFINITIONS[block].color);
       // 破坏后通知水系统重新评估：挖开海底/岸边会让相邻水向缺口流动，破坏水源会退水。
       waterFlow.markDirty(position.x, position.y, position.z);
@@ -548,6 +596,8 @@ document.addEventListener(
 canvas.addEventListener('dragstart', (event) => event.preventDefault());
 canvas.addEventListener('pointerdown', (event) => {
   canvas.setPointerCapture(event.pointerId);
+  // 第二个音频解锁点：点击画布本身也是用户手势。
+  sounds.unlock();
   if (event.button !== 0) {
     event.preventDefault();
   }
@@ -582,7 +632,14 @@ canvas.addEventListener('mousedown', (event) => {
     if (player.intersectsBlockPosition(blockPosition.x, blockPosition.y, blockPosition.z)) {
       return;
     }
+    // 物品栏门控：持有数量为 0 不能放置（水恒可放，不消耗）。
+    if (!inventory.canPlace(selectedBlock)) {
+      return;
+    }
     if (world.setBlock(blockPosition.x, blockPosition.y, blockPosition.z, selectedBlock)) {
+      inventory.tryConsume(selectedBlock);
+      hotbar.refreshCounts(inventory);
+      sounds.playPlace();
       // 放置的水源本身写入存档；由它向四周蔓延出的水仅存在于运行时（不存档）。
       if (selectedBlock === BlockId.Water) {
         waterFlow.addSource(blockPosition.x, blockPosition.y, blockPosition.z);
@@ -598,15 +655,30 @@ canvas.addEventListener('mouseup', (event) => {
   if (event.button === 0) {
     breakingHeld = false;
     resetBreaking();
+    sounds.stopBreaking();
   }
 });
 
 document.addEventListener('keydown', (event) => {
   const index = Number(event.key) - 1;
-  const nextBlock = selectableBlocks[index];
-  if (nextBlock !== undefined) {
-    selectedBlock = nextBlock;
-    selectedBlockLabel.textContent = BLOCK_DEFINITIONS[selectedBlock].name.replace('gm:', '');
+  if (selectableBlocks[index] !== undefined) {
+    hotbar.select(index);
+  }
+});
+
+// 滚轮循环切换热键栏（指针锁定且未暂停时），与数字键/点击共用 hotbar.select。
+window.addEventListener('wheel', (event) => {
+  if (document.pointerLockElement !== canvas || paused) {
+    return;
+  }
+  const direction = event.deltaY > 0 ? 1 : -1;
+  hotbar.select((hotbar.selected + direction + selectableBlocks.length) % selectableBlocks.length);
+});
+
+// 切后台标签页时停掉持续音。
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    sounds.silence();
   }
 });
 
@@ -626,6 +698,7 @@ function render(): void {
     player.update(deltaSeconds);
     world.update(player.position.x, player.position.z);
     particles.update(deltaSeconds);
+    drops.update(deltaSeconds, player.position);
     waterFlow.update(deltaSeconds);
     updateSelection();
     updateBreaking(deltaSeconds);
