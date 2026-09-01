@@ -19,6 +19,7 @@ import {
 import {
   SaveFormatError,
   WorldStorage,
+  classifySaveError,
   createStoredWorld,
   parseWorldFile,
   serializeWorld
@@ -147,6 +148,7 @@ const gameSavesMenu = savesMenu;
 const savesListElement = savesList;
 const seedInputElement = seedInput;
 const activeSaveNameLabelElement = activeSaveNameLabel;
+const startGameButton = startGame;
 
 // 菜单贴图蒙版:主界面铺石头、存档界面铺泥土(暗色蒙层保证文字可读)。
 const mainMenuPanel = mainMenu.querySelector<HTMLElement>('.menu-panel');
@@ -190,14 +192,12 @@ function pauseGame(): void {
   setMenuVisibility(gamePauseMenu, true);
 }
 
-startGame.addEventListener('click', startOrResumeGame);
+startGame.addEventListener('click', () => {
+  void enterWorldFromMainMenu();
+});
 resumeGame.addEventListener('click', startOrResumeGame);
 returnMainMenu.addEventListener('click', () => {
-  gameStarted = false;
-  paused = true;
-  setMenuVisibility(gamePauseMenu, false);
-  setMenuVisibility(gameMainMenu, true);
-  void populateSaveList();
+  void leaveToMainMenu();
 });
 document.addEventListener('pointerlockchange', () => {
   if (gameStarted && document.pointerLockElement !== gameCanvas) {
@@ -308,24 +308,42 @@ async function restoreWorld(): Promise<void> {
   hotbar.refreshCounts(inventory);
 }
 
-async function saveCurrentWorld(): Promise<void> {
-  const deltas = world.getModifiedChunks();
-  await storage.saveWorld(
-    createStoredWorld(
-      activeSaveId,
-      activeSaveName,
-      metadata,
-      player.position,
-      inventory.toEntries(),
-      deltas
-    )
-  );
-  // 保存成功后按快照清除已入库的修改记录，存档体积不再随编辑量累积增长。
-  world.clearChanges(deltas);
+// showSuccessToast:手动保存成功后提示"已保存";自动保存成功保持静默。
+// 失败(配额耗尽/其他错误)无论哪种保存路径都弹出错误提示。
+async function saveCurrentWorld(showSuccessToast = false): Promise<void> {
+  try {
+    const deltas = world.getModifiedChunks();
+    await storage.saveWorld(
+      createStoredWorld(
+        activeSaveId,
+        activeSaveName,
+        metadata,
+        player.position,
+        inventory.toEntries(),
+        deltas
+      )
+    );
+    // 保存成功后按快照清除已入库的修改记录，存档体积不再随编辑量累积增长。
+    world.clearChanges(deltas);
+    if (showSuccessToast) {
+      showToast('已保存当前世界');
+    }
+  } catch (error) {
+    if (classifySaveError(error) === 'quota') {
+      showToast('存储空间不足，保存失败：请清理浏览器存储', 'error');
+    } else {
+      const message = error instanceof Error ? error.message : '未知错误';
+      showToast(`保存失败：${message}`, 'error');
+    }
+  }
   await populateSaveList();
 }
 
 function scheduleSave(): void {
+  // 只有游戏中才排队自动保存:返回菜单后残留的防抖定时器不再触发写入。
+  if (!gameStarted) {
+    return;
+  }
   if (saveTimer !== undefined) {
     window.clearTimeout(saveTimer);
   }
@@ -335,7 +353,71 @@ function scheduleSave(): void {
   }, 600);
 }
 
-void restoreWorld();
+// 启动即恢复存档,并记住 promise:"进入世界"点击时 await 它,避免恢复未完成就开玩
+// 或读档失败后进入空白世界。恢复错误在点击处统一弹窗,这里挂空 catch 防止
+// 浏览器报未处理拒绝(点击处理器 await 的仍是原 promise,能正常拿到拒绝)。
+const restorePromise = restoreWorld();
+restorePromise.catch(() => undefined);
+
+// 主界面"进入世界":等待存档恢复完成再进入;恢复期间按钮禁用显示"正在恢复…"。
+async function enterWorldFromMainMenu(): Promise<void> {
+  startGameButton.disabled = true;
+  startGameButton.textContent = '正在恢复…';
+  try {
+    await restorePromise;
+  } catch (error) {
+    await handleRestoreError(error);
+    return;
+  } finally {
+    startGameButton.disabled = false;
+    startGameButton.textContent = '进入世界';
+  }
+  startOrResumeGame();
+}
+
+// 读档失败分类处理:版本过新仅提示;损坏提供"删除并进入新世界"选项;其余报错。
+async function handleRestoreError(error: unknown): Promise<void> {
+  if (!(error instanceof SaveFormatError)) {
+    showToast('读档失败，请稍后重试', 'error');
+    return;
+  }
+  if (error.reason === 'too-new') {
+    await showDialog({
+      title: '存档版本过新',
+      message: '这个存档来自更新版本的游戏，请升级游戏后再进入。',
+      confirmText: '知道了'
+    });
+    return;
+  }
+  const answer = await showDialog({
+    title: '存档已损坏',
+    message: `${error.message}。可以删除该存档并进入新世界。`,
+    confirmText: '删除并进入新世界',
+    danger: true
+  });
+  if (answer === null) {
+    return;
+  }
+  await storage.deleteWorld(activeSaveId);
+  activeSaveName = '默认存档';
+  syncActiveSaveName();
+  showToast('已删除损坏存档');
+  startOrResumeGame();
+}
+
+// 返回主界面:先取消防抖定时器并立即落盘最后 600ms 内的编辑,再切换界面。
+async function leaveToMainMenu(): Promise<void> {
+  gameStarted = false;
+  paused = true;
+  if (saveTimer !== undefined) {
+    window.clearTimeout(saveTimer);
+    saveTimer = undefined;
+  }
+  await saveCurrentWorld();
+  setMenuVisibility(gamePauseMenu, false);
+  setMenuVisibility(gameMainMenu, true);
+  void populateSaveList();
+}
 
 function currentSeed(): string {
   return seedInputElement.value.trim() || defaultSeed;
@@ -571,7 +653,7 @@ createSave.addEventListener('click', () => {
   window.location.search = next.toString();
 });
 saveWorld.addEventListener('click', () => {
-  void saveCurrentWorld();
+  void saveCurrentWorld(true);
 });
 manageSaves.addEventListener('click', () => {
   setMenuVisibility(gameMainMenu, false);
