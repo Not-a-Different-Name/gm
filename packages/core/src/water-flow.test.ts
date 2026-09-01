@@ -6,6 +6,7 @@ import {
   WATER_NONE,
   computeWaterLevel,
   isWaterFlowable,
+  waterFallsThrough,
   waterOutflow,
   type WaterCellState,
   type WaterNeighborhood
@@ -26,6 +27,14 @@ describe('isWaterFlowable', () => {
   });
 });
 
+describe('waterFallsThrough', () => {
+  it('空气与水都会让水流继续下落，只有实体方块让水落地', () => {
+    expect(waterFallsThrough(BlockId.Air)).toBe(true);
+    expect(waterFallsThrough(BlockId.Water)).toBe(true);
+    expect(waterFallsThrough(BlockId.Stone)).toBe(false);
+  });
+});
+
 describe('waterOutflow', () => {
   it('无水且非源不供水', () => {
     expect(waterOutflow(baseCell)).toBe(WATER_NONE);
@@ -41,6 +50,14 @@ describe('waterOutflow', () => {
 
   it('落点水（上方有水且已落地）以满级向四周摊开', () => {
     expect(waterOutflow({ ...baseCell, level: 2, aboveIsWater: true })).toBe(0);
+  });
+
+  it('回归：下落水柱不向水平供水（下方是水仍算未落地）', () => {
+    // 下方是水：本格属于下落水柱（下方在同一 tick 已被先填满），
+    // 即便上方有水也不得横向摊开，否则瀑布会一路向四周蔓延。
+    expect(waterOutflow({ ...baseCell, level: 0, aboveIsWater: true, belowFlowable: true })).toBe(
+      WATER_NONE
+    );
   });
 
   it('水平流动水按自身水位供水', () => {

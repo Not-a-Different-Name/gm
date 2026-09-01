@@ -6,6 +6,7 @@ import {
   isWaterFlowable,
   toChunkCoordinate,
   toLocalCoordinate,
+  waterFallsThrough,
   waterOutflow,
   type WaterCellState
 } from '@gm/core';
@@ -139,7 +140,10 @@ export class WaterFlowController {
     return {
       level: isSource ? 0 : this.world.getWaterLevel(x, y, z),
       isSource,
-      belowFlowable: isWaterFlowable(this.world.getBlock(x, y - 1, z)),
+      // 下方是空气或水都视为"未落地"：空气会继续下落；是水说明本格
+      // 属于下落水柱（下方在同一 tick 已被先填满）或悬浮在水面上方。
+      // 只有实体地面才让水落地并向水平摊开。
+      belowFlowable: waterFallsThrough(this.world.getBlock(x, y - 1, z)),
       aboveIsWater: this.world.getBlock(x, y + 1, z) === BlockId.Water
     };
   }
@@ -201,7 +205,8 @@ export class WaterFlowController {
 
   // 把水源的供给推送到下方或四个水平邻居。
   private spreadFrom(x: number, y: number, z: number): void {
-    if (isWaterFlowable(this.world.getBlock(x, y - 1, z))) {
+    // 下方会让水继续下落（空气或水，例如悬浮在水面上方）：优先下落，不向水平摊开。
+    if (waterFallsThrough(this.world.getBlock(x, y - 1, z))) {
       this.activate(x, y - 1, z);
       return;
     }

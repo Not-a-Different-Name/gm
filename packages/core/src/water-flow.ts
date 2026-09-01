@@ -14,7 +14,8 @@ export interface WaterCellState {
   readonly level: number;
   // 本格是否为永久水源（生成的海洋、玩家放置的水）。水源恒满且不会干涸。
   readonly isSource: boolean;
-  // 正下方是否可被水流入（为空气）。能向下流时不向水平摊开。
+  // 正下方是否会让水继续下落（空气或水，即尚未落地）。
+  // 只有实体地面才让水落地并向水平摊开。
   readonly belowFlowable: boolean;
   // 正上方是否有水（含流动/下落水）。落点水会以满级向四周摊开。
   readonly aboveIsWater: boolean;
@@ -37,10 +38,19 @@ export function isWaterFlowable(blockId: BlockId): boolean {
 }
 
 /**
+ * 判断水流经过该方块时是否继续下落、不向水平摊开：
+ * 空气会被水流入；是水则说明本格属于下落水柱（下方在同一 tick 已被先填满）
+ * 或悬浮在水面上方——两种情况都尚未落地。只有实体方块才让水落地并开始水平摊开。
+ */
+export function waterFallsThrough(blockId: BlockId): boolean {
+  return blockId === BlockId.Air || blockId === BlockId.Water;
+}
+
+/**
  * 计算某个水格对其"水平邻居"提供的供水级（纯函数，确定性）。
  *
  * - 无水且非源 → 不供水（WATER_NONE）。
- * - 正下方可流入 → 水优先下落，不向水平摊开（WATER_NONE）。
+ * - 正下方会让水继续下落（空气或水）→ 水优先下落，不向水平摊开（WATER_NONE）。
  * - 是水源，或落点水（正上方有水且已落地）→ 满级供水 0（邻居将变为 1）。
  * - 否则为水平流动水 → 以自身水位供水（邻居将变为 level + 1）。
  */

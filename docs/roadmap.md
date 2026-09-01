@@ -26,4 +26,4 @@
 
 水体透明材质、水下雾与移动效果、天空渐变和像素云层也是该阶段的必做项；它们与基础纹理图集分开实现，以便独立调节性能与画面风格。天空渐变、方块日月、星点与昼夜光照已经完成（见 `packages/renderer/src/sky.ts`）；水体透明材质、水面波纹与滚动流动效果也已完成（见 `packages/renderer/src/water-material.ts` 与 `chunk-mesh.ts`），水下雾与移动效果、像素云层仍待补充。
 
-水流扩散（已列为必做）已完成：纯函数水位规则位于 `packages/core/src/water-flow.ts`，蔓延上限 `MAX_WATER_LEVEL = 3`（曼哈顿 3 格）且每扩散一格水位下降一级，使横向扩散范围明显低于经典沙盒；规则由确定性状态驱动并附 11 个单元测试（`water-flow.test.ts`）。蔓延水不进存档（仅玩家放置的水源作为方块修改存档），读档后水源自动重新蔓延。运行时调度器见 `packages/renderer/src/water-flow-controller.ts`。
+水流扩散（已列为必做）已完成：纯函数水位规则位于 `packages/core/src/water-flow.ts`，蔓延上限 `MAX_WATER_LEVEL = 3`（曼哈顿 3 格）且每扩散一格水位下降一级，使横向扩散范围明显低于经典沙盒；规则由确定性状态驱动并附 13 个单元测试（`water-flow.test.ts`，含下落水柱不横向摊开的回归用例）。蔓延水不进存档（仅玩家放置的水源作为方块修改存档），读档后水源自动重新蔓延。运行时调度器见 `packages/renderer/src/water-flow-controller.ts`。
