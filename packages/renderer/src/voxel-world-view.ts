@@ -181,6 +181,17 @@ export class VoxelWorldView implements BlockLookup {
     return deltas;
   }
 
+  // 存档保存成功后按快照清除已入库的修改记录（compare-and-delete）：
+  // 保存期间同格被再次编辑的新修改会保留，不会随本次清除丢失。
+  public clearChanges(deltas: readonly ChunkDelta[]): void {
+    for (const delta of deltas) {
+      if (!this.boundary.containsChunk({ x: delta.x, z: delta.z })) {
+        continue;
+      }
+      this.getChunk(delta.x, delta.z).clearChanges(delta.changes);
+    }
+  }
+
   // 应用存档差异到对应区块，并返回其中恢复出的水源世界坐标，
   // 供调用方唤醒水流调度器让水源重新蔓延（蔓延水不存档，读档后由水源重新爬出）。
   public applyChunkDeltas(deltas: readonly ChunkDelta[]): { x: number; y: number; z: number }[] {

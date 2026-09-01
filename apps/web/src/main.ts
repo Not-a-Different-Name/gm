@@ -256,6 +256,7 @@ async function restoreWorld(): Promise<void> {
 }
 
 async function saveCurrentWorld(): Promise<void> {
+  const deltas = world.getModifiedChunks();
   await storage.saveWorld(
     createStoredWorld(
       activeSaveId,
@@ -263,9 +264,11 @@ async function saveCurrentWorld(): Promise<void> {
       metadata,
       player.position,
       inventory.toEntries(),
-      world.getModifiedChunks()
+      deltas
     )
   );
+  // 保存成功后按快照清除已入库的修改记录，存档体积不再随编辑量累积增长。
+  world.clearChanges(deltas);
   await populateSaveList();
 }
 
