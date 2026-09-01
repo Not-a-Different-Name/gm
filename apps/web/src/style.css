@@ -200,3 +200,199 @@ h1 {
   font-size: 10px;
   pointer-events: none;
 }
+
+/* 底部提示浮层:信息与错误两种配色,自动消失。 */
+.toast-layer {
+  position: fixed;
+  left: 50%;
+  bottom: 1.5rem;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.toast {
+  padding: 0.65rem 1.1rem;
+  border: 3px solid #57733e;
+  background: #263f2d;
+  color: #f3f8e8;
+  box-shadow: 5px 5px 0 #0c140e;
+  font-weight: 700;
+  animation: toast-in 0.18s ease-out;
+}
+
+.toast--error {
+  border-color: #a34a3a;
+  background: #5a2e26;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+}
+
+/* 模态对话框:遮罩 + 面板,危险操作的确认钮变红。 */
+.dialog-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgb(6 16 10 / 64%);
+}
+
+.dialog-panel {
+  width: min(22rem, 100%);
+  padding: 1.5rem;
+  border: 4px solid #57733e;
+  background: #263f2d;
+  box-shadow: 10px 10px 0 #0c140e;
+  text-align: center;
+}
+
+.dialog-panel h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.dialog-panel p {
+  margin: 0 0 1rem;
+  color: #d4e7bb;
+  font-size: 0.9rem;
+}
+
+.dialog-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #d4e7bb;
+  text-align: left;
+}
+
+.dialog-panel input {
+  width: 100%;
+  padding: 0.6rem;
+  border: 2px solid #809a72;
+  background: #182c20;
+  color: #f3f8e8;
+  font: inherit;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 1.2rem;
+}
+
+.dialog-actions button {
+  flex: 1;
+  padding: 0.7rem 1rem;
+  border: 2px solid #b4d17d;
+  background: #5d873f;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.dialog-actions button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.dialog-actions .dialog-cancel {
+  border-color: #809a72;
+  background: #3e5846;
+}
+
+.dialog-actions .dialog-confirm.is-danger {
+  border-color: #e08a72;
+  background: #a34a3a;
+}
+
+/* 贴图蒙版面板:面板铺方块贴图并叠暗色蒙层,内容浮在蒙层之上。 */
+.menu-panel.is-textured {
+  position: relative;
+  background-position: 0 0;
+}
+
+.menu-panel.is-textured::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgb(19 32 23 / 86%);
+}
+
+.menu-panel.is-textured > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* 存档管理界面:列表行 = 名称摘要 + 进入/管理两按钮;详情面板。 */
+.save-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+  padding: 0.65rem 0.8rem;
+  border: 2px solid #809a72;
+  background: #3e5846;
+  text-align: left;
+}
+
+.save-row-name {
+  display: block;
+  font-weight: 700;
+}
+
+.save-row-meta {
+  display: block;
+  margin-top: 0.2rem;
+  color: #d4e7bb;
+  font-size: 0.76rem;
+}
+
+.save-row-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.save-row-buttons button {
+  margin-top: 0;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.save-detail {
+  margin-top: 0.5rem;
+  padding: 0.8rem 1rem;
+  border: 2px solid #809a72;
+  background: rgb(24 44 32 / 90%);
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.save-detail dt {
+  margin-top: 0.5rem;
+  color: #b4d17d;
+  font-weight: 700;
+}
+
+.save-detail dt:first-child {
+  margin-top: 0;
+}
+
+.save-detail dd {
+  margin: 0.15rem 0 0;
+  color: #d4e7bb;
+  word-break: break-all;
+}
