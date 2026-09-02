@@ -92,7 +92,7 @@ corepack pnpm build
 
 ### 4. 存档完善
 
-1. ~~存档重命名、删除、导出和导入。~~ 已完成：独立存档管理界面（`apps/web/src/main.ts`），列表行仅 [进入][管理] 两按钮、详情面板五操作；导出为 JSON 文件下载（`serializeWorld`），导入经 `parseWorldFile` 校验、同 id 覆盖需确认、种子不同自动同步种子输入。
+1. ~~存档重命名、删除、导出和导入。~~ 已完成：主界面与存档界面均为全屏贴图界面（`apps/web/src/main.ts`）——主界面中央大卡分「游玩」「新建存档」两区；存档界面顶栏 + 左列表右详情，列表行整行可选、操作集中在右侧详情面板（进入世界/重命名/导出/删除）；导出为 JSON 文件下载（`serializeWorld`），导入经 `parseWorldFile` 校验、同 id 覆盖需确认、种子不同自动同步种子输入。
 2. ~~存档格式版本迁移与损坏提示。~~ 已完成：`packages/storage/src/world-format.ts` 的 `migrateWorldData` 逐字段校验 + `MIGRATIONS` 迁移链（当前 v1 链为空，留待未来格式变更），错误按 `invalid-json`/`corrupted`/`too-new` 归类；读档与导入共用同一校验路径（存储层共 22 个单元测试，含 fake-indexeddb 用例）。
 3. ~~保存失败提示、浏览器存储配额提示和世界缩略信息。~~ 已完成：手动保存成功提示"已保存"，失败按 `classifySaveError` 区分配额耗尽与其他错误；存档行与详情面板显示修改区块数、玩家坐标与保存时间。
 4. ~~避免在同一存档未恢复完成前进行修改；当前恢复是异步进行的。~~ 已完成：`restorePromise` 不再 fire-and-forget，"进入世界"await 恢复完成并禁用按钮显示"正在恢复…"；损坏弹窗提供删除并进入新世界，版本过新提示升级。返回主界面前先落盘防抖定时器内的最后编辑。
