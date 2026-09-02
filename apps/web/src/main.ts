@@ -63,29 +63,46 @@ app.innerHTML = `
     <p>当前方块：<strong id="selected-block">草方块</strong></p>
     <p class="hint">点击画面锁定鼠标 · 左键破坏拾取 · 右键放置（消耗 1 个）· 1-6/滚轮选方块（水 ∞）· WASD 移动 · 空格跳跃 · F 飞行 · V 切换视角</p>
   </aside>
-  <section id="main-menu" class="menu-layer">
-    <div class="menu-panel">
-      <p class="eyebrow">GM · 单机世界</p>
-      <h1>可扩展的方块世界</h1>
-      <label class="save-name-label" for="seed-input">种子（决定地形生成）</label>
-      <input id="seed-input" maxlength="64" value="${metadata.seed}" />
-      <p>当前存档：<strong id="active-save-name">${activeSaveName}</strong></p>
-      <button id="start-game" type="button">进入世界</button>
-      <label class="save-name-label" for="new-save-name">新存档名称</label>
-      <input id="new-save-name" maxlength="32" placeholder="例如：山地建造" />
-      <button id="create-save" class="secondary-button" type="button">创建新存档</button>
-      <button id="manage-saves" class="secondary-button" type="button">管理存档</button>
+  <section id="main-menu" class="menu-layer is-fullscreen">
+    <div class="menu-screen">
+      <header class="menu-header">
+        <p class="eyebrow">GM · 单机世界</p>
+        <h1>可扩展的方块世界</h1>
+        <p class="menu-subtitle">
+          当前存档：<strong id="active-save-name">${activeSaveName}</strong> · 种子
+          <strong id="menu-seed-label">${metadata.seed}</strong>
+        </p>
+      </header>
+      <div class="menu-card">
+        <section class="menu-section">
+          <h2 class="menu-section-title">游玩</h2>
+          <button id="start-game" class="primary-action" type="button">进入世界</button>
+          <button id="manage-saves" class="secondary-button" type="button">管理存档</button>
+        </section>
+        <section class="menu-section">
+          <h2 class="menu-section-title">新建存档</h2>
+          <label class="save-name-label" for="seed-input">种子（决定地形生成）</label>
+          <input id="seed-input" maxlength="64" value="${metadata.seed}" />
+          <label class="save-name-label" for="new-save-name">存档名称</label>
+          <input id="new-save-name" maxlength="32" placeholder="例如：山地建造" />
+          <button id="create-save" class="secondary-button" type="button">创建新存档</button>
+        </section>
+      </div>
       <p class="menu-note">进入后点击画面锁定鼠标，按 Esc 暂停。</p>
     </div>
   </section>
-  <section id="saves-menu" class="menu-layer is-hidden" aria-hidden="true">
-    <div class="menu-panel">
-      <p class="eyebrow">GM · 存档管理</p>
-      <h1>存档列表</h1>
-      <button id="back-to-main" type="button">返回主界面</button>
-      <button id="import-save" class="secondary-button" type="button">导入存档</button>
+  <section id="saves-menu" class="menu-layer is-fullscreen is-hidden" aria-hidden="true">
+    <div class="menu-screen">
+      <header class="saves-topbar">
+        <button id="back-to-main" class="bar-button" type="button">← 返回主界面</button>
+        <h1>存档管理</h1>
+        <button id="import-save" class="bar-button" type="button">导入存档</button>
+      </header>
       <input id="import-file" type="file" accept=".json,application/json" hidden />
-      <div id="saves-list" class="save-list" aria-label="当前种子的存档列表"></div>
+      <div class="saves-layout">
+        <div id="saves-list" class="save-list" aria-label="当前种子的存档列表"></div>
+        <aside id="save-detail" class="save-detail-panel is-hidden" aria-hidden="true"></aside>
+      </div>
     </div>
   </section>
   <section id="pause-menu" class="menu-layer is-hidden" aria-hidden="true">
@@ -120,7 +137,9 @@ const importFile = document.querySelector<HTMLInputElement>('#import-file');
 const newSaveName = document.querySelector<HTMLInputElement>('#new-save-name');
 const seedInput = document.querySelector<HTMLInputElement>('#seed-input');
 const savesList = document.querySelector<HTMLElement>('#saves-list');
+const saveDetail = document.querySelector<HTMLElement>('#save-detail');
 const activeSaveNameLabel = document.querySelector<HTMLElement>('#active-save-name');
+const menuSeedLabel = document.querySelector<HTMLElement>('#menu-seed-label');
 if (
   mainMenu === null ||
   pauseMenu === null ||
@@ -137,7 +156,9 @@ if (
   newSaveName === null ||
   seedInput === null ||
   savesList === null ||
-  activeSaveNameLabel === null
+  saveDetail === null ||
+  activeSaveNameLabel === null ||
+  menuSeedLabel === null
 ) {
   throw new Error('找不到游戏菜单');
 }
@@ -146,18 +167,15 @@ const gameMainMenu = mainMenu;
 const gamePauseMenu = pauseMenu;
 const gameSavesMenu = savesMenu;
 const savesListElement = savesList;
+const saveDetailElement = saveDetail;
 const seedInputElement = seedInput;
 const activeSaveNameLabelElement = activeSaveNameLabel;
+const menuSeedLabelElement = menuSeedLabel;
 const startGameButton = startGame;
 
-// 菜单贴图蒙版:主界面铺石头、存档界面铺泥土(暗色蒙层保证文字可读)。
-const mainMenuPanel = mainMenu.querySelector<HTMLElement>('.menu-panel');
-const savesMenuPanel = savesMenu.querySelector<HTMLElement>('.menu-panel');
-if (mainMenuPanel === null || savesMenuPanel === null) {
-  throw new Error('找不到菜单面板');
-}
-applyTextureBackground(mainMenuPanel, 'stone');
-applyTextureBackground(savesMenuPanel, 'dirt');
+// 全屏菜单贴图蒙版:主界面整层铺石头、存档界面整层铺泥土(暗色蒙层保证文字可读)。
+applyTextureBackground(gameMainMenu, 'stone');
+applyTextureBackground(gameSavesMenu, 'dirt');
 
 let gameStarted = false;
 let paused = true;
@@ -438,55 +456,68 @@ function enterSave(id: string, name: string): void {
   window.location.search = next.toString();
 }
 
-// 存档列表:每行仅两个按钮——[进入]进世界、[管理]展开详情,行内附摘要。
+// 存档列表:左侧每行是整行可点的选择按钮(名称+摘要),点选后右侧详情面板
+// 统一提供进入/重命名/导出/删除,列表行上不再堆按钮。
+let selectedSaveId: string | undefined;
+
 async function populateSaveList(): Promise<void> {
   const saves = await storage.listWorlds(currentSeed());
   savesListElement.replaceChildren();
   if (saves.length === 0) {
+    hideSaveDetail();
     const empty = document.createElement('p');
     empty.className = 'menu-note';
-    empty.textContent = '这个种子还没有存档：创建新存档，或导入 JSON 文件。';
+    empty.textContent = '这个种子还没有存档：在主界面新建存档，或点击右上角导入 JSON 文件。';
     savesListElement.append(empty);
     return;
   }
   for (const save of saves) {
-    const row = document.createElement('div');
+    const row = document.createElement('button');
+    row.type = 'button';
     row.className = 'save-row';
-    const info = document.createElement('div');
+    if (save.id === selectedSaveId) {
+      row.classList.add('is-selected');
+    }
     const name = document.createElement('span');
     name.className = 'save-row-name';
     name.textContent = save.name ?? '旧存档';
     const meta = document.createElement('span');
     meta.className = 'save-row-meta';
     meta.textContent =
-      `修改 ${save.chunks.length} 区块 · 玩家 ` +
-      `(${Math.floor(save.player.x)}, ${Math.floor(save.player.y)}, ${Math.floor(save.player.z)}) · ` +
-      new Date(save.updatedAt).toLocaleString();
-    info.append(name, meta);
-    const buttons = document.createElement('div');
-    buttons.className = 'save-row-buttons';
-    const enterButton = document.createElement('button');
-    enterButton.type = 'button';
-    enterButton.textContent = '进入';
-    enterButton.addEventListener('click', () => enterSave(save.id, save.name ?? '旧存档'));
-    const manageButton = document.createElement('button');
-    manageButton.type = 'button';
-    manageButton.className = 'secondary-button';
-    manageButton.textContent = '管理';
-    manageButton.addEventListener('click', () => renderSaveDetail(save));
-    buttons.append(enterButton, manageButton);
-    row.append(info, buttons);
+      `修改 ${save.chunks.length} 区块 · ` + new Date(save.updatedAt).toLocaleString();
+    row.append(name, meta);
+    row.addEventListener('click', () => selectSave(save, row));
     savesListElement.append(row);
+  }
+  // 保持上次选中(重命名/导入后重渲染仍高亮同一行);选中项已消失则收起详情。
+  const selected = saves.find((save) => save.id === selectedSaveId);
+  if (selected === undefined) {
+    hideSaveDetail();
+  } else {
+    renderSaveDetail(selected);
   }
 }
 
-// 存档详情:替代列表区显示完整信息,五个功能各一按钮,避免单屏按钮堆叠。
+function selectSave(save: StoredWorld, row: HTMLButtonElement): void {
+  selectedSaveId = save.id;
+  savesListElement.querySelectorAll('.save-row').forEach((element) => {
+    element.classList.remove('is-selected');
+  });
+  row.classList.add('is-selected');
+  renderSaveDetail(save);
+}
+
+// 详情面板:渲染到右侧固定面板(列表保持可见),四个操作各一个按钮。
 function renderSaveDetail(save: StoredWorld): void {
-  savesListElement.replaceChildren();
+  saveDetailElement.replaceChildren();
+  const title = document.createElement('h2');
+  title.className = 'save-detail-title';
+  title.textContent = save.name ?? '旧存档';
+  saveDetailElement.append(title);
+
   const detail = document.createElement('dl');
   detail.className = 'save-detail';
   const rows: ReadonlyArray<readonly [string, string]> = [
-    ['名称', save.name ?? '旧存档'],
     ['种子', save.metadata.seed],
     ['修改区块', String(save.chunks.length)],
     [
@@ -502,7 +533,7 @@ function renderSaveDetail(save: StoredWorld): void {
     description.textContent = value;
     detail.append(term, description);
   }
-  savesListElement.append(detail);
+  saveDetailElement.append(detail);
 
   const addActionButton = (text: string, className: string, onClick: () => void): void => {
     const button = document.createElement('button');
@@ -510,10 +541,10 @@ function renderSaveDetail(save: StoredWorld): void {
     button.className = className;
     button.textContent = text;
     button.addEventListener('click', onClick);
-    savesListElement.append(button);
+    saveDetailElement.append(button);
   };
 
-  addActionButton('进入世界', '', () => enterSave(save.id, save.name ?? '旧存档'));
+  addActionButton('进入世界', 'primary-action', () => enterSave(save.id, save.name ?? '旧存档'));
   addActionButton('重命名存档', 'secondary-button', () => {
     void renameSave(save);
   });
@@ -523,9 +554,13 @@ function renderSaveDetail(save: StoredWorld): void {
   addActionButton('删除存档', 'danger-button', () => {
     void deleteSave(save);
   });
-  addActionButton('返回列表', 'secondary-button', () => {
-    void populateSaveList();
-  });
+  setMenuVisibility(saveDetailElement, true);
+}
+
+function hideSaveDetail(): void {
+  selectedSaveId = undefined;
+  saveDetailElement.replaceChildren();
+  setMenuVisibility(saveDetailElement, false);
 }
 
 async function renameSave(save: StoredWorld): Promise<void> {
@@ -543,10 +578,8 @@ async function renameSave(save: StoredWorld): Promise<void> {
     syncActiveSaveName();
   }
   showToast('已重命名存档');
-  const updated = await storage.loadWorld(save.id);
-  if (updated !== undefined) {
-    renderSaveDetail(updated);
-  }
+  // 重渲染列表并保持选中:行名与右侧详情面板同步刷新。
+  await populateSaveList();
 }
 
 async function deleteSave(save: StoredWorld): Promise<void> {
@@ -632,10 +665,13 @@ async function handleImport(json: string): Promise<void> {
   await storage.saveWorld(parsed);
   if (parsed.metadata.seed !== currentSeed()) {
     seedInputElement.value = parsed.metadata.seed;
+    menuSeedLabelElement.textContent = parsed.metadata.seed;
     showToast(`已导入，种子已同步为「${parsed.metadata.seed}」`);
   } else {
     showToast(`已导入存档「${parsed.name ?? '旧存档'}」`);
   }
+  // 选中刚导入的存档,右侧详情面板直接展示它的信息与操作。
+  selectedSaveId = parsed.id;
   await populateSaveList();
 }
 
@@ -940,7 +976,8 @@ function updateBreaking(deltaSeconds: number): void {
 }
 
 function isMenuTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && target.closest('.menu-panel') !== null;
+  // 菜单层(含全屏主界面/存档界面)内允许默认右键菜单;游戏画面与 HUD 一律拦截。
+  return target instanceof Element && target.closest('.menu-layer') !== null;
 }
 
 document.addEventListener(

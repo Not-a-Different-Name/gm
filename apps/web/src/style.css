@@ -58,6 +58,7 @@ h1 {
 
 .menu-layer {
   position: fixed;
+  z-index: 20;
   inset: 0;
   display: grid;
   place-items: center;
@@ -69,6 +70,65 @@ h1 {
   display: none;
 }
 
+/* 全屏界面层:整层铺方块贴图,内容铺满视口。 */
+.menu-layer.is-fullscreen {
+  display: block;
+  padding: 0;
+  background: #17271d;
+}
+
+.menu-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: clamp(1rem, 3vw, 2.5rem);
+  overflow: auto;
+}
+
+#main-menu .menu-screen {
+  align-items: center;
+  text-align: center;
+}
+
+/* 主界面:标题居顶、中央一张大卡(游玩/新建两分区)。auto 外边距分摊剩余空间,
+   内容超高时按 flex 规则回退为 0,滚动而不裁掉顶部。 */
+#main-menu .menu-screen > * {
+  width: min(34rem, 100%);
+  flex-shrink: 0;
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
+.menu-header h1 {
+  margin: 0.25rem 0 0.35rem;
+  font-size: 1.9rem;
+}
+
+.menu-subtitle {
+  margin: 0 0 1.5rem;
+  color: #d4e7bb;
+}
+
+.menu-card {
+  padding: 1.5rem;
+  border: 4px solid #57733e;
+  background: rgb(24 44 32 / 92%);
+  box-shadow: 10px 10px 0 #0c140e;
+}
+
+.menu-section + .menu-section {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 2px solid #3a5540;
+}
+
+.menu-section-title {
+  margin: 0 0 0.25rem;
+  color: #b4d17d;
+  font-size: 0.95rem;
+  text-align: left;
+}
+
 .menu-panel {
   width: min(26rem, 100%);
   padding: 2rem;
@@ -78,7 +138,9 @@ h1 {
   text-align: center;
 }
 
-.menu-panel button {
+.menu-panel button,
+.menu-card button,
+.save-detail-panel button {
   display: block;
   width: 100%;
   margin-top: 1rem;
@@ -91,7 +153,8 @@ h1 {
   font-weight: 700;
 }
 
-.menu-panel input {
+.menu-panel input,
+.menu-card input {
   width: 100%;
   margin-top: 0.35rem;
   padding: 0.65rem;
@@ -108,39 +171,40 @@ h1 {
   text-align: left;
 }
 
-.save-list {
-  display: grid;
-  max-height: 12rem;
-  gap: 0.45rem;
-  margin-top: 1rem;
-  overflow: auto;
-}
-
-.menu-panel .save-entry {
-  margin-top: 0;
-  border-color: #809a72;
-  background: #3e5846;
-  font-size: 0.82rem;
-  text-align: left;
-}
-
 .menu-panel button:hover,
-.menu-panel button:focus-visible {
+.menu-panel button:focus-visible,
+.menu-card button:hover,
+.menu-card button:focus-visible,
+.save-detail-panel button:hover,
+.save-detail-panel button:focus-visible {
   background: #75a94d;
 }
 
-.menu-panel .secondary-button {
+.menu-panel .secondary-button,
+.menu-card .secondary-button,
+.save-detail-panel .secondary-button {
   border-color: #809a72;
   background: #3e5846;
 }
 
-.menu-panel .danger-button {
+.menu-panel .danger-button,
+.menu-card .danger-button,
+.save-detail-panel .danger-button {
   border-color: #e08a72;
   background: #a34a3a;
 }
 
-.menu-panel .danger-button:hover {
+.menu-panel .danger-button:hover,
+.menu-card .danger-button:hover,
+.save-detail-panel .danger-button:hover {
   background: #c45642;
+}
+
+/* 首要动作按钮(进入世界):更大更醒目,与次要操作形成层级。 */
+.menu-card .primary-action,
+.save-detail-panel .primary-action {
+  padding: 1rem;
+  font-size: 1.05rem;
 }
 
 .menu-note {
@@ -325,35 +389,111 @@ h1 {
   background: #a34a3a;
 }
 
-/* 贴图蒙版面板:面板铺方块贴图并叠暗色蒙层,内容浮在蒙层之上。 */
-.menu-panel.is-textured {
+/* 贴图蒙版:全屏界面层(或面板)铺方块贴图并叠暗色蒙层,内容浮在蒙层之上。 */
+.is-textured {
   position: relative;
   background-position: 0 0;
 }
 
-.menu-panel.is-textured::before {
+/* 界面层自身必须保持 fixed 铺满视口,不被 is-textured 的 relative 覆盖。 */
+.menu-layer.is-textured {
+  position: fixed;
+}
+
+.is-textured::before {
   content: '';
   position: absolute;
   inset: 0;
   background: rgb(19 32 23 / 86%);
 }
 
-.menu-panel.is-textured > * {
+.is-textured > * {
   position: relative;
   z-index: 1;
 }
 
-/* 存档管理界面:列表行 = 名称摘要 + 进入/管理两按钮;详情面板。 */
-.save-row {
+/* 存档管理界面:顶部栏(返回/标题/导入)+ 左列表右详情双栏。 */
+.saves-topbar {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  gap: 0.6rem;
-  margin-top: 0.5rem;
-  padding: 0.65rem 0.8rem;
+  flex-shrink: 0;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.saves-topbar h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.saves-topbar button:first-child {
+  justify-self: start;
+}
+
+.saves-topbar button:last-child {
+  justify-self: end;
+}
+
+.bar-button {
+  padding: 0.6rem 1.1rem;
   border: 2px solid #809a72;
   background: #3e5846;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.bar-button:hover,
+.bar-button:focus-visible {
+  background: #75a94d;
+}
+
+.saves-layout {
+  display: grid;
+  grid-template-columns: minmax(16rem, 1fr) minmax(20rem, 1.2fr);
+  flex: 1;
+  min-height: 0;
+  gap: 1.25rem;
+}
+
+.save-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-right: 0.25rem;
+  overflow: auto;
+}
+
+.save-list .menu-note {
+  margin: 0;
+}
+
+/* 列表行:整行可点的选择按钮,点选高亮,右侧面板展示该存档的详情与操作。 */
+.save-row {
+  display: block;
+  flex-shrink: 0;
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  border: 2px solid #809a72;
+  background: rgb(62 88 70 / 92%);
+  color: #f3f8e8;
   text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.save-row:hover,
+.save-row:focus-visible {
+  border-color: #b4d17d;
+  background: rgb(75 105 84 / 92%);
+}
+
+.save-row.is-selected {
+  border-color: #d6f2a8;
+  background: rgb(93 135 63 / 72%);
+  box-shadow: inset 4px 0 0 #d6f2a8;
 }
 
 .save-row-name {
@@ -366,21 +506,6 @@ h1 {
   margin-top: 0.2rem;
   color: #d4e7bb;
   font-size: 0.76rem;
-}
-
-.save-row-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.save-row-buttons button {
-  display: block;
-  width: 4.5rem;
-  margin-top: 0;
-  padding: 0.45rem 0.6rem;
-  font-size: 0.8rem;
-  white-space: nowrap;
 }
 
 .save-detail {
@@ -406,4 +531,42 @@ h1 {
   margin: 0.15rem 0 0;
   color: #d4e7bb;
   word-break: break-all;
+}
+
+/* 右侧详情面板:选中存档的信息与全部操作集中于此,左侧列表保持可见。 */
+.save-detail-panel {
+  padding: 1.25rem;
+  border: 3px solid #57733e;
+  background: rgb(24 44 32 / 94%);
+  box-shadow: 8px 8px 0 #0c140e;
+  overflow: auto;
+  text-align: left;
+}
+
+.save-detail-panel.is-hidden {
+  display: none;
+}
+
+.save-detail-title {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+/* 窄屏:存档双栏改上下堆叠,顶部栏收紧为返回+导入。 */
+@media (max-width: 720px) {
+  .saves-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .saves-topbar {
+    grid-template-columns: auto 1fr;
+  }
+
+  .saves-topbar h1 {
+    display: none;
+  }
+
+  .saves-topbar button:last-child {
+    grid-column: 2;
+  }
 }
