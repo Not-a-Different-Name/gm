@@ -5,7 +5,7 @@ import type { BlockLookup } from './chunk-mesh.js';
 import { getTextureAtlas } from './texture-atlas.js';
 
 interface DropItem {
-  readonly mesh: THREE.Mesh<THREE.BoxGeometry, THREE.MeshBasicMaterial>;
+  readonly mesh: THREE.Mesh<THREE.BoxGeometry, THREE.MeshBasicMaterial[]>;
   readonly blockId: BlockId;
   readonly velocity: THREE.Vector3;
   readonly bobPhase: number;
@@ -27,8 +27,8 @@ const CLEANUP_Y = -16;
 export class DropItems {
   public readonly object3d = new THREE.Group();
   private readonly items: DropItem[] = [];
-  // 按方块缓存贴图与材质：方块种类有限，避免每个掉落物各建一份。
-  private readonly materialsByBlock = new Map<BlockId, THREE.MeshBasicMaterial>();
+  // 按方块缓存六面材质：方块种类有限，避免每个掉落物各建一份。
+  private readonly materialsByBlock = new Map<BlockId, THREE.MeshBasicMaterial[]>();
   private readonly lookup: BlockLookup;
   private readonly onPickup: (blockId: BlockId) => void;
   private elapsed = 0;
@@ -51,7 +51,7 @@ export class DropItems {
       // 超出上限丢弃最老的掉落物，防止连续破坏无限累积。
       this.removeItem(0, false);
     }
-    const mesh = new THREE.Mesh(dropGeometry, this.getMaterial(blockId));
+    const mesh = new THREE.Mesh(dropGeometry, this.getMaterials(blockId));
     mesh.position.copy(position);
     this.object3d.add(mesh);
     this.items.push({
@@ -118,19 +118,31 @@ export class DropItems {
     }
   }
 
-  private getMaterial(blockId: BlockId): THREE.MeshBasicMaterial {
-    let material = this.materialsByBlock.get(blockId);
-    if (material === undefined) {
-      const texture = new THREE.CanvasTexture(
-        getTextureAtlas().copyTile(BLOCK_DEFINITIONS[blockId].textures.side, 0, 2)
-      );
-      texture.magFilter = THREE.NearestFilter;
-      texture.minFilter = THREE.NearestFilter;
-      texture.colorSpace = THREE.SRGBColorSpace;
-      // alphaTest 裁掉透明孔洞（树叶贴图镂空），否则孔洞会渲染成黑点。
-      material = new THREE.MeshBasicMaterial({ map: texture, alphaTest: 0.5 });
-      this.materialsByBlock.set(blockId, material);
+  // BoxGeometry 的材质数组顺序为 +x、-x、+y、-y、+z、-z：
+  // 四个侧面用侧面贴图，顶/底面用方块定义各自的顶/底贴图（草方块顶面是草皮、木头顶面是年轮）。
+  private getMaterials(blockId: BlockId): THREE.MeshBasicMaterial[] {
+    let materials = this.materialsByBlock.get(blockId);
+    if (materials === undefined) {
+      const definition = BLOCK_DEFINITIONS[blockId];
+      const atlas = getTextureAtlas();
+      const make = (textureId: string): THREE.MeshBasicMaterial => {
+        const texture = new THREE.CanvasTexture(atlas.copyTile(textureId, 0, 2));
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestFilter;
+        texture.colorSpace = THREE.SRGBColorSpace;
+        // alphaTest 裁掉透明孔洞（树叶贴图镂空），否则孔洞会渲染成黑点。
+        return new THREE.MeshBasicMaterial({ map: texture, alphaTest: 0.5 });
+      };
+      materials = [
+        make(definition.textures.side),
+        make(definition.textures.side),
+        make(definition.textures.top),
+        make(definition.textures.bottom),
+        make(definition.textures.side),
+        make(definition.textures.side)
+      ];
+      this.materialsByBlock.set(blockId, materials);
     }
-    return material;
+    return materials;
   }
 }

@@ -28,7 +28,7 @@
 
 水流扩散（已列为必做）已完成：纯函数水位规则位于 `packages/core/src/water-flow.ts`，蔓延上限 `MAX_WATER_LEVEL = 3`（曼哈顿 3 格）且每扩散一格水位下降一级，使横向扩散范围明显低于经典沙盒；规则由确定性状态驱动并附 18 个单元测试（`water-flow.test.ts`，含下落水柱不横向摊开的回归用例与水面高度/重叠几何用例）。蔓延水不进存档（仅玩家放置的水源作为方块修改存档），读档后水源自动重新蔓延。运行时调度器见 `packages/renderer/src/water-flow-controller.ts`。
 
-方块与交互完善同样完成：底部像素风热键栏显示持有数量（`apps/web/src/hotbar.ts`），物品栏为掉落+拾取+消耗语义并随存档保存（`packages/core/src/inventory.ts`，附 13 个单元测试；水不计入物品栏、恒可放置，水槽显示 ∞）；破坏/放置音效为 Web Audio 程序化合成、按硬度分三档（`apps/web/src/sound.ts`）；破坏掉落物为运行时实体、走近自动拾取、穿透水沉底（`packages/renderer/src/drop-items.ts`）；方块粒子重写为 96 粒预分配对象池（`packages/renderer/src/block-particles.ts`）。以上均为独立运行时扩展，不影响世界生成与存档兼容性。
+方块与交互完善同样完成：底部像素风热键栏显示持有数量（`apps/web/src/hotbar.ts`），物品栏为掉落+拾取+消耗语义并随存档保存（`packages/core/src/inventory.ts`，附 13 个单元测试；水不计入物品栏、恒可放置，水槽显示 ∞）；破坏/放置音效为 Web Audio 程序化合成、按硬度分三档（`apps/web/src/sound.ts`）；破坏掉落物为运行时实体、走近自动拾取、穿透水沉底（`packages/renderer/src/drop-items.ts`，小立方体六面分别贴顶/底/侧贴图）；方块粒子重写为 96 粒预分配对象池（`packages/renderer/src/block-particles.ts`）。以上均为独立运行时扩展，不影响世界生成与存档兼容性。
 
 性能优化同样完成：实心地形升级为贪心网格（core 纯函数 `greedy-mesh.ts` 六方向 2D 扫描合并共面，附 14 个单元测试；纹理变体只由面所在层与朝向决定，破坏方块后幸存面的贴图朝向不变；renderer 纯函数 `chunk-mesh-geometry.ts` 按方向角格表转顶点数组，`solid-material.ts` 材质单例 onBeforeCompile 注入 fract 图集平铺采样）；区块流送改分帧预算（每帧数据 2 / 网格 1 / 待办重建 1，可配置，三队列均按距玩家距离²最近优先），区块数据缓存上限 256 块、按"未渲染 + 无未保存修改 + 无运行时水位"四条件逐帧淘汰（回滞 0.75，含水区块不淘汰）；视距半径 1→2（5×5 区块，fixed 模式仍 3×3，雾与相机参数不变）；存档保存成功后按快照清除修改记录，存档体积不再随编辑量累积增长。
 
