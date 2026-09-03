@@ -28,6 +28,7 @@ import type { StoredWorld } from '@gm/storage';
 import * as THREE from 'three';
 
 import { showDialog } from './dialog.js';
+import { initFullscreen, toggleFullscreen } from './fullscreen.js';
 import { Hotbar } from './hotbar.js';
 import { applyTextureBackground } from './menu-texture.js';
 import { BlockSounds } from './sound.js';
@@ -78,6 +79,7 @@ app.innerHTML = `
           <h2 class="menu-section-title">游玩</h2>
           <button id="start-game" class="primary-action" type="button">进入世界</button>
           <button id="manage-saves" class="secondary-button" type="button">管理存档</button>
+          <button id="toggle-fullscreen-main" class="secondary-button fullscreen-toggle" type="button">进入全屏</button>
         </section>
         <section class="menu-section">
           <h2 class="menu-section-title">新建存档</h2>
@@ -111,6 +113,7 @@ app.innerHTML = `
       <h1>暂停菜单</h1>
       <button id="resume-game" type="button">继续游戏</button>
       <button id="save-world" class="secondary-button" type="button">保存当前地图</button>
+      <button id="toggle-fullscreen-pause" class="secondary-button fullscreen-toggle" type="button">进入全屏</button>
       <button id="return-main-menu" class="secondary-button" type="button">返回主界面</button>
       <p class="menu-note">按 Esc 也可暂停；选择继续后点击画面恢复控制。</p>
     </div>
@@ -431,10 +434,10 @@ async function leaveToMainMenu(): Promise<void> {
     window.clearTimeout(saveTimer);
     saveTimer = undefined;
   }
+  // saveCurrentWorld 末尾已刷新存档列表,这里无需重复调用。
   await saveCurrentWorld();
   setMenuVisibility(gamePauseMenu, false);
   setMenuVisibility(gameMainMenu, true);
-  void populateSaveList();
 }
 
 function currentSeed(): string {
@@ -594,12 +597,13 @@ async function deleteSave(save: StoredWorld): Promise<void> {
   }
   await storage.deleteWorld(save.id);
   if (save.id === activeSaveId) {
-    activeSaveName = '默认存档';
-    syncActiveSaveName();
-    showToast('已删除当前存档：再进入世界将创建新世界');
-  } else {
-    showToast('已删除存档');
+    // 删除当前存档后整页刷新(沿用 enterSave 的 URL 重载模式):启动时恢复进内存的
+    // 旧区块差异必须一起丢弃,否则再次进入后第一次保存会把已删除内容写回同 id 新存档。
+    sessionStorage.setItem('gm-deleted-active-save', '1');
+    window.location.search = new URLSearchParams({ seed: currentSeed() }).toString();
+    return;
   }
+  showToast('已删除存档');
   await populateSaveList();
 }
 
@@ -700,6 +704,11 @@ backToMain.addEventListener('click', () => {
   setMenuVisibility(gameSavesMenu, false);
   setMenuVisibility(gameMainMenu, true);
 });
+// 显示器全屏:主界面与暂停菜单的切换按钮共用同一行为,文案随状态同步。
+document.querySelectorAll<HTMLButtonElement>('.fullscreen-toggle').forEach((button) => {
+  button.addEventListener('click', toggleFullscreen);
+});
+initFullscreen();
 importSave.addEventListener('click', () => {
   importFile.click();
 });
@@ -720,6 +729,11 @@ importFile.addEventListener('change', () => {
   });
   reader.readAsText(file);
 });
+// 删除当前存档后的整页刷新:显示提示并清除一次性标记。
+if (sessionStorage.getItem('gm-deleted-active-save') !== null) {
+  sessionStorage.removeItem('gm-deleted-active-save');
+  showToast('已删除当前存档：再进入世界将创建新世界');
+}
 void populateSaveList();
 
 const selectedBlockLabel = document.querySelector<HTMLElement>('#selected-block');

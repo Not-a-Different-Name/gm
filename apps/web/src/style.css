@@ -66,10 +66,6 @@ h1 {
   background: rgb(6 16 10 / 54%);
 }
 
-.menu-layer.is-hidden {
-  display: none;
-}
-
 /* 全屏界面层:整层铺方块贴图,内容铺满视口。 */
 .menu-layer.is-fullscreen {
   display: block;
@@ -77,9 +73,18 @@ h1 {
   background: #17271d;
 }
 
+/* 隐藏态必须定义在全屏态之后:两者特异性相同,层叠取后出现的规则,
+   否则带 is-fullscreen 的层(如存档界面)加 is-hidden 也无法隐藏。 */
+.menu-layer.is-hidden {
+  display: none;
+}
+
+/* 必须显式铺满视口:此盒即使不匹配任何 width 规则,Blink 仍会把它
+   收缩到内容宽(fit-content),两栏大卡随之压缩;指定 100% 强制占满父层。 */
 .menu-screen {
   display: flex;
   flex-direction: column;
+  width: 100%;
   height: 100%;
   padding: clamp(1rem, 3vw, 2.5rem);
   overflow: auto;
@@ -90,10 +95,10 @@ h1 {
   text-align: center;
 }
 
-/* 主界面:标题居顶、中央一张大卡(游玩/新建两分区)。auto 外边距分摊剩余空间,
-   内容超高时按 flex 规则回退为 0,滚动而不裁掉顶部。 */
+/* 主界面:标题居顶、中央一张宽大卡(游玩/新建两栏并排,适配 PC 横屏画幅)。
+   auto 外边距分摊剩余空间,内容超高时按 flex 规则回退为 0,滚动而不裁掉顶部。 */
 #main-menu .menu-screen > * {
-  width: min(34rem, 100%);
+  width: min(64rem, 100%);
   flex-shrink: 0;
   margin-top: auto;
   margin-bottom: auto;
@@ -101,7 +106,7 @@ h1 {
 
 .menu-header h1 {
   margin: 0.25rem 0 0.35rem;
-  font-size: 1.9rem;
+  font-size: 2.2rem;
 }
 
 .menu-subtitle {
@@ -110,16 +115,22 @@ h1 {
 }
 
 .menu-card {
-  padding: 1.5rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 2.5rem;
+  padding: 2rem;
   border: 4px solid #57733e;
   background: rgb(24 44 32 / 92%);
   box-shadow: 10px 10px 0 #0c140e;
 }
 
+/* 两栏并排:分区之间用左分隔线隔开(窄屏断点处回落为上下堆叠+顶分隔线)。 */
 .menu-section + .menu-section {
-  margin-top: 1.5rem;
-  padding-top: 1.25rem;
-  border-top: 2px solid #3a5540;
+  margin-top: 0;
+  padding-top: 0;
+  padding-left: 2.5rem;
+  border-top: none;
+  border-left: 2px solid #3a5540;
 }
 
 .menu-section-title {
@@ -130,7 +141,7 @@ h1 {
 }
 
 .menu-panel {
-  width: min(26rem, 100%);
+  width: min(30rem, 100%);
   padding: 2rem;
   border: 4px solid #57733e;
   background: #263f2d;
@@ -552,8 +563,20 @@ h1 {
   font-size: 1.15rem;
 }
 
-/* 窄屏:存档双栏改上下堆叠,顶部栏收紧为返回+导入。 */
+/* 窄屏:主界面大卡回单列堆叠,存档双栏改上下堆叠,顶部栏收紧为返回+导入。 */
 @media (max-width: 720px) {
+  .menu-card {
+    grid-template-columns: 1fr;
+  }
+
+  .menu-section + .menu-section {
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    padding-left: 0;
+    border-top: 2px solid #3a5540;
+    border-left: none;
+  }
+
   .saves-layout {
     grid-template-columns: 1fr;
   }
