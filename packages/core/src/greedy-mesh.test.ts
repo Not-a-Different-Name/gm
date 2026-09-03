@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { BlockId } from './block.js';
 import {
   generateGreedyMesh,
-  getRectVariant,
+  getPlaneVariant,
   TEXTURE_VARIANT_COUNT,
   type GreedyRect
 } from './greedy-mesh.js';
@@ -204,19 +204,68 @@ describe('generateGreedyMesh 确定性与纹理', () => {
   });
 });
 
-describe('getRectVariant', () => {
+describe('getPlaneVariant', () => {
   it('同参数必同输出，且落在变体数量范围内', () => {
-    for (const [originX, originY, originZ, width, height, directionIndex] of [
-      [0, 0, 0, 1, 1, 0],
-      [7, 64, 3, 16, 16, 2],
-      [15, 255, 15, 2, 5, 5]
+    for (const [layerCoordinate, directionIndex] of [
+      [0, 0],
+      [64, 2],
+      [255, 5]
     ] as const) {
-      const variant = getRectVariant(originX, originY, originZ, width, height, directionIndex);
-      expect(variant).toBe(
-        getRectVariant(originX, originY, originZ, width, height, directionIndex)
-      );
+      const variant = getPlaneVariant(layerCoordinate, directionIndex);
+      expect(variant).toBe(getPlaneVariant(layerCoordinate, directionIndex));
       expect(variant).toBeGreaterThanOrEqual(0);
       expect(variant).toBeLessThan(TEXTURE_VARIANT_COUNT);
+    }
+  });
+});
+
+describe('变体稳定性（破坏方块不改变周围贴图朝向）', () => {
+  // 返回覆盖格 (u, v) 的矩形变体。顶面方向 u 轴 = x、v 轴 = z；
+  // -Z 侧面方向 u 轴 = x、v 轴 = y——本组用例方块都位于 y=0、z=0，两种面 v 坐标均为 0。
+  function variantAt(rects: readonly GreedyRect[], u: number, v = 0): number {
+    const rect = rects.find(
+      (candidate) =>
+        u >= candidate.u0 &&
+        u < candidate.u0 + candidate.width &&
+        v >= candidate.v0 &&
+        v < candidate.v0 + candidate.height
+    );
+    if (rect === undefined) {
+      throw new Error(`未找到覆盖 (${u}, ${v}) 的矩形`);
+    }
+    return rect.variant;
+  }
+
+  it('同层同朝向的矩形共享同一变体（即使被空洞拆开）', () => {
+    // 3×1 平面中间缺一格：拆成两个矩形，变体必须一致。
+    const blocks = [
+      { x: 0, y: 0, z: 0, id: BlockId.Grass },
+      { x: 2, y: 0, z: 0, id: BlockId.Grass }
+    ];
+    const top = rectsFor(TOP, blocks);
+    expect(top).toHaveLength(2);
+    expect(top[0]?.variant).toBe(top[1]?.variant);
+  });
+
+  it('破坏相邻方块后，幸存方块面的变体不变', () => {
+    // 1×3 平台：先记录各格顶面与 -Z 侧面变体，挖掉中间格后比对幸存格。
+    const full = [
+      { x: 0, y: 0, z: 0, id: BlockId.Grass },
+      { x: 1, y: 0, z: 0, id: BlockId.Grass },
+      { x: 2, y: 0, z: 0, id: BlockId.Grass }
+    ];
+    const survivors = full.filter((block) => block.x !== 1);
+    // 顶面（破坏前合并为 3×1 一个矩形，破坏后拆成两个 1×1）。
+    const beforeTop = rectsFor(TOP, full);
+    const afterTop = rectsFor(TOP, survivors);
+    for (const x of [0, 2]) {
+      expect(variantAt(afterTop, x)).toBe(variantAt(beforeTop, x));
+    }
+    // -Z 侧面（方向下标 5）。
+    const beforeSide = rectsFor(5, full);
+    const afterSide = rectsFor(5, survivors);
+    for (const x of [0, 2]) {
+      expect(variantAt(afterSide, x)).toBe(variantAt(beforeSide, x));
     }
   });
 });

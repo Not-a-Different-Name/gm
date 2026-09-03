@@ -1,6 +1,6 @@
 import { BLOCK_DEFINITIONS, BlockId, isOpaqueBlock } from './block.js';
 
-// 纹理变体数量：渲染层图集为每种纹理平铺若干个变体，网格构建时按矩形哈希挑选其一。
+// 纹理变体数量：渲染层图集为每种纹理平铺若干个变体，网格构建时按面所在层挑选其一。
 // 常量放在 core，让贪心网格与图集共用同一事实来源。
 export const TEXTURE_VARIANT_COUNT = 4;
 
@@ -40,7 +40,8 @@ export interface GreedyRect {
   readonly blockId: BlockId;
   /** 该方向使用的纹理标识（顶面/底面/侧面由方块定义导出）。 */
   readonly textureId: string;
-  /** 矩形级纹理变体：由锚点与宽高哈希而来，同一数据重建时结果确定。 */
+  /** 纹理变体：只由该面所在层(沿法线坐标)与朝向决定，与合并边界无关——
+      同层同朝向的格共享同一变体，破坏/放置邻居方块后幸存面的贴图朝向保持不变。 */
   readonly variant: number;
 }
 
@@ -55,23 +56,14 @@ export interface GreedyMeshOptions {
   readonly occludes?: (blockId: BlockId) => boolean;
 }
 
-/** 矩形级纹理变体：由锚点本地坐标与宽高哈希而来，同参数必同结果。 */
-export function getRectVariant(
-  originX: number,
-  originY: number,
-  originZ: number,
-  width: number,
-  height: number,
+/** 面级纹理变体：只由该面所在层(沿法线坐标)与朝向哈希而来，同参数必同结果。
+    不掺入矩形锚点与宽高：合并边界随方块增删而变化时，幸存面的变体保持不变。 */
+export function getPlaneVariant(
+  layerCoordinate: number,
   directionIndex: number,
   variantCount = TEXTURE_VARIANT_COUNT
 ): number {
-  const hash =
-    Math.imul(originX, 73_856_093) ^
-    Math.imul(originY, 19_349_663) ^
-    Math.imul(originZ, 83_492_791) ^
-    Math.imul(width, 2_654_435_761) ^
-    Math.imul(height, 4_034_101) ^
-    Math.imul(directionIndex, 8_669_849_089);
+  const hash = Math.imul(layerCoordinate, 73_856_093) ^ Math.imul(directionIndex, 8_669_849_089);
   return (hash >>> 0) % variantCount;
 }
 
@@ -108,6 +100,8 @@ export function generateGreedyMesh(options: GreedyMeshOptions): GreedyRect[] {
   const mask = new Uint8Array(uCount * vCount);
 
   for (let layer = 0; layer < layerCount; layer += 1) {
+    // 本层所有面共享同一变体（只依赖层坐标与朝向）：矩形怎么合并/拆分都不影响贴图朝向。
+    const variant = getPlaneVariant(layer, options.directionIndex);
     for (let v = 0; v < vCount; v += 1) {
       for (let u = 0; u < uCount; u += 1) {
         const [x, y, z] = localCoordinate(direction, u, v, layer);
@@ -150,7 +144,6 @@ export function generateGreedyMesh(options: GreedyMeshOptions): GreedyRect[] {
           }
         }
 
-        const [anchorX, anchorY, anchorZ] = localCoordinate(direction, u, v, layer);
         const definition = BLOCK_DEFINITIONS[blockId as BlockId];
         rects.push({
           directionIndex: options.directionIndex,
@@ -166,7 +159,7 @@ export function generateGreedyMesh(options: GreedyMeshOptions): GreedyRect[] {
               : ny < 0
                 ? definition.textures.bottom
                 : definition.textures.side,
-          variant: getRectVariant(anchorX, anchorY, anchorZ, width, height, options.directionIndex)
+          variant
         });
       }
     }
