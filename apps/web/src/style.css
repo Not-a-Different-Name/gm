@@ -95,40 +95,67 @@ h1 {
   text-align: center;
 }
 
-/* 主界面:标题居顶、中央一张宽大卡(游玩/新建两栏并排,适配 PC 横屏画幅)。
-   auto 外边距分摊剩余空间,内容超高时按 flex 规则回退为 0,滚动而不裁掉顶部。 */
+/* 主界面:标题贴顶、中央一张宽大卡(游玩/新建两栏并排)。
+   宽度与控件随视口连续缩放(clamp vw):小窗接近占满、大屏增至 78rem,
+   保证不同分辨率下的适用性;卡片在标题下方剩余空间内垂直居中,
+   内容超高时自动回退滚动。 */
 #main-menu .menu-screen > * {
-  width: min(64rem, 100%);
+  width: min(clamp(44rem, 84vw, 88rem), 100%);
   flex-shrink: 0;
-  margin-top: auto;
+}
+
+/* 标题与卡片保持紧凑间距;卡片紧随标题之下,剩余高度留白全部沉底,
+   内容超高时滚动。 */
+#main-menu .menu-header {
+  margin-top: 0;
+  margin-bottom: clamp(1.25rem, 4.5vh, 3.5rem);
+}
+
+#main-menu .menu-card {
+  margin-top: 0;
   margin-bottom: auto;
+}
+
+.menu-header .eyebrow {
+  font-size: clamp(0.8rem, 0.6rem + 0.5vh, 1.25rem);
 }
 
 .menu-header h1 {
   margin: 0.25rem 0 0.35rem;
-  font-size: 2.2rem;
+  font-size: clamp(1.8rem, 1rem + 2.4vh, 3.4rem);
 }
 
 .menu-subtitle {
-  margin: 0 0 1.5rem;
+  margin: 0 0 clamp(0.75rem, 0.4rem + 1.2vh, 1.75rem);
   color: #d4e7bb;
+  font-size: clamp(0.9rem, 0.75rem + 0.5vh, 1.3rem);
 }
 
 .menu-card {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  column-gap: 2.5rem;
-  padding: 2rem;
+  column-gap: clamp(1.5rem, 2.5vw, 3.5rem);
+  /* 竖向随视口高度、横向随视口宽度(轴解耦,横拉窗口不撑高卡片)。 */
+  padding: clamp(1.25rem, 0.75rem + 2.2vh, 2.5rem) clamp(1.5rem, 1rem + 2.5vw, 3rem);
+  /* 高度随视口填充(上限 44rem),大屏下卡片更饱满。 */
+  min-height: clamp(28rem, 60vh, 44rem);
   border: 4px solid #57733e;
   background: rgb(24 44 32 / 92%);
   box-shadow: 10px 10px 0 #0c140e;
+}
+
+/* 两栏并排时等高拉伸(堆叠的窄屏不适用,避免撑高卡片)。 */
+@media (min-width: 721px) {
+  .menu-card {
+    grid-auto-rows: 1fr;
+  }
 }
 
 /* 两栏并排:分区之间用左分隔线隔开(窄屏断点处回落为上下堆叠+顶分隔线)。 */
 .menu-section + .menu-section {
   margin-top: 0;
   padding-top: 0;
-  padding-left: 2.5rem;
+  padding-left: clamp(1.5rem, 2.5vw, 3.5rem);
   border-top: none;
   border-left: 2px solid #3a5540;
 }
@@ -136,13 +163,13 @@ h1 {
 .menu-section-title {
   margin: 0 0 0.25rem;
   color: #b4d17d;
-  font-size: 0.95rem;
+  font-size: clamp(0.9rem, 0.7rem + 0.5vh, 1.25rem);
   text-align: left;
 }
 
 .menu-panel {
-  width: min(30rem, 100%);
-  padding: 2rem;
+  width: min(clamp(30rem, 28vw, 40rem), 100%);
+  padding: clamp(1.25rem, 0.75rem + 1.6vh, 2.25rem) clamp(1.25rem, 0.9rem + 1.6vw, 2.75rem);
   border: 4px solid #57733e;
   background: #263f2d;
   box-shadow: 10px 10px 0 #0c140e;
@@ -155,24 +182,26 @@ h1 {
   display: block;
   width: 100%;
   margin-top: 1rem;
-  padding: 0.8rem 1rem;
+  padding: clamp(0.75rem, 0.4rem + 1.3vh, 1.7rem) clamp(1rem, 0.8rem + 0.8vw, 1.6rem);
   border: 2px solid #b4d17d;
   background: #5d873f;
   color: #fff;
   cursor: pointer;
   font: inherit;
   font-weight: 700;
+  font-size: clamp(0.95rem, 0.75rem + 0.45vh, 1.35rem);
 }
 
 .menu-panel input,
 .menu-card input {
   width: 100%;
   margin-top: 0.35rem;
-  padding: 0.65rem;
+  padding: clamp(0.6rem, 0.35rem + 1vh, 1.3rem) clamp(0.9rem, 0.7rem + 0.8vw, 1.5rem);
   border: 2px solid #809a72;
   background: #182c20;
   color: #f3f8e8;
   font: inherit;
+  font-size: clamp(0.95rem, 0.75rem + 0.45vh, 1.3rem);
 }
 
 .save-name-label {
@@ -212,10 +241,15 @@ h1 {
 }
 
 /* 首要动作按钮(进入世界):更大更醒目,与次要操作形成层级。 */
-.menu-card .primary-action,
 .save-detail-panel .primary-action {
   padding: 1rem;
   font-size: 1.05rem;
+}
+
+/* 主界面首要按钮随视口放大。 */
+.menu-card .primary-action {
+  padding: clamp(1rem, 0.6rem + 1.1vh, 1.9rem) clamp(1.1rem, 0.9rem + 0.9vw, 1.7rem);
+  font-size: clamp(1.05rem, 0.85rem + 0.5vh, 1.5rem);
 }
 
 .menu-note {
